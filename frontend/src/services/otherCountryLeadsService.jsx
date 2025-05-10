@@ -295,7 +295,7 @@ async function processOtherCountryPresence(
         api_key: apiKey,
         organization_id: orgId,
         page: 1,
-        per_page: 1,
+        per_page: 10,
         show_pagination_data: true
       });
 
@@ -350,7 +350,7 @@ async function processOtherCountryPresence(
         api_key: apiKey,
         organization_id: orgId,
         page: 1,
-        per_page: 1,
+        per_page: 10,
         show_pagination_data: true
       });
 

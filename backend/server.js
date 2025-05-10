@@ -110,7 +110,7 @@ app.post('/api/apollo/organizations/contacts/india', async (req, res) => {
       'organization_ids[]': req.body.organization_id,
       api_key: req.body.api_key,
       page: req.body.page || 1,
-      per_page: req.body.per_page || 1,
+      per_page: req.body.per_page || 10,
       show_pagination_data: true
     };
     
@@ -153,7 +153,7 @@ app.post('/api/apollo/organizations/contacts/othercountries', async (req, res) =
       'organization_ids[]': req.body.organization_id,
       api_key: req.body.api_key,
       page: req.body.page || 1,
-      per_page: req.body.per_page || 1,
+      per_page: req.body.per_page || 10,
       show_pagination_data: true
     };
     

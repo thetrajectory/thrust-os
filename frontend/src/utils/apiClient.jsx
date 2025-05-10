@@ -87,7 +87,7 @@ const apolloAPI = {
                 api_key: data.api_key,
                 organization_id: data.organization_id,
                 page: data.page || 1,
-                per_page: data.per_page || 1,
+                per_page: data.per_page || 10,
                 show_pagination_data: true
             };
 
@@ -110,7 +110,7 @@ const apolloAPI = {
                 api_key: data.api_key,
                 organization_id: data.organization_id,
                 page: data.page || 1,
-                per_page: data.per_page || 1,
+                per_page: data.per_page || 10,
                 show_pagination_data: true
             };
 
