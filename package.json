@@ -10,6 +10,10 @@
       "install-frontend": "cd frontend && npm install",
       "build-frontend": "cd frontend && npm run build",
       "start": "cd backend && node server.js",
+      "dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\"",
       "build": "npm run install-backend && npm run install-frontend && npm run build-frontend"
+    },
+    "dependencies": {
+        "concurrently": "^8.2.0"
     }
-  }
+}
