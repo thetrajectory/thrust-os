@@ -9,6 +9,7 @@ import OrchestratedProcessingPage from './components/OrchestratedProcessingPage'
 import ProxyConnectionTest from './components/ProxyConnectionTest';
 import ResultsPage from './components/ResultsPage';
 import enrichmentOrchestrator from './services/enrichmentOrchestrator';
+import './App.css'
 
 const App = () => {
   // Navigation hooks (now works because we're inside BrowserRouter)
