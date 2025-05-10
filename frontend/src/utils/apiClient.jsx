@@ -3,7 +3,7 @@ import axios from 'axios';
 
 // Create axios instance with default config
 const apiClient = axios.create({
-    baseURL: import.meta.env.VITE_REACT_APP_API_BASE_URL || '/api',
+    baseURL: import.meta.env.VITE_REACT_APP_API_BASE_URL || '',
     timeout: 30000,
     headers: {
         'Content-Type': 'application/json',
@@ -129,7 +129,7 @@ const apolloAPI = {
 const openAIAPI = {
     chatCompletion: async (data) => {
         try {
-            const response = await apiClient.post('/api/openai/chat/completions', data);
+            const response = await apiClient.post('/openai/chat/completions', data);
             return response.data;
         } catch (error) {
             console.error('Error in chatCompletion:', error.message);
