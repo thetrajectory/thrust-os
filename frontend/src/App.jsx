@@ -151,7 +151,7 @@ const App = () => {
             Client: {selectedClient} {selectedAdvisor && `| Advisor: ${selectedAdvisor}`}
           </span>
         )}
-        <ProxyConnectionTest />
+        {/* <ProxyConnectionTest /> */}
       </header>
 
       <Routes>
