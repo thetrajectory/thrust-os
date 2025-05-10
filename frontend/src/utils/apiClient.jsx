@@ -70,7 +70,7 @@ apiClient.interceptors.response.use(
 const apolloAPI = {
     matchPerson: async (data) => {
         try {
-            const response = await apiClient.post('/api/apollo/people/match', data);
+            const response = await apiClient.post('/apollo/people/match', data);
             return response.data;
         } catch (error) {
             console.error('Error in matchPerson:', error.message);
@@ -91,7 +91,7 @@ const apolloAPI = {
                 show_pagination_data: true
             };
 
-            const response = await apiClient.post('/api/apollo/organizations/contacts/india', requestData);
+            const response = await apiClient.post('/apollo/organizations/contacts/india', requestData);
 
             console.log('Received pagination data:', response.data.pagination);
             return response.data;
@@ -114,7 +114,7 @@ const apolloAPI = {
                 show_pagination_data: true
             };
 
-            const response = await apiClient.post('/api/apollo/organizations/contacts/othercountries', requestData);
+            const response = await apiClient.post('/apollo/organizations/contacts/othercountries', requestData);
 
             console.log('Received pagination data for other countries:', response.data.pagination);
             return response.data;
@@ -155,7 +155,7 @@ const serperAPI = {
             console.log(`Formatted URL for scraping: ${formattedUrl}`);
 
             // Using the direct fetch approach via our proxy server
-            const response = await apiClient.post('/api/serper/website', { url: formattedUrl });
+            const response = await apiClient.post('/serper/website', { url: formattedUrl });
 
             // Return the data
             return response.data;
@@ -186,14 +186,14 @@ const coresignalAPI = {
                 // Just for logging, continue even if we can't extract
             }
 
-            const response = await apiClient.post('/api/coresignal/search', queryData);
-            
+            const response = await apiClient.post('/coresignal/search', queryData);
+
             // Check if we got a valid response
             if (!response.data) {
                 console.log('Empty response from Coresignal search API');
                 return { error: 'Empty search response' };
             }
-            
+
             // Handle different response formats
             if (Array.isArray(response.data) && response.data.length > 0) {
                 console.log(`Search response code: ${response.data[0]}`);
@@ -207,25 +207,25 @@ const coresignalAPI = {
             }
         } catch (error) {
             console.error('Error in searchCompany:', error.message);
-            
+
             // Handle authentication errors specially
             if (error.statusCode === 401 || error.message.includes('Authentication failed')) {
                 console.error('Authentication failed for Coresignal API');
-                return { 
+                return {
                     error: 'Authentication failed for Coresignal API. Please check your API key.',
                     statusCode: 401
                 };
             }
-            
+
             // If we get a 402 Payment Required error, handle gracefully
             if (error.statusCode === 402 || error.message.includes('Payment required')) {
                 console.log('Coresignal API payment limit reached');
-                return { 
+                return {
                     error: 'Payment required for Coresignal API',
                     statusCode: 402
                 };
             }
-            
+
             // Rethrow general errors
             throw error;
         }
@@ -235,29 +235,29 @@ const coresignalAPI = {
         try {
             console.log(`Calling Coresignal collect data API for code: ${responseCode}`);
 
-            const response = await apiClient.get(`/api/coresignal/collect/${responseCode}`);
+            const response = await apiClient.get(`/coresignal/collect/${responseCode}`);
             return response.data;
         } catch (error) {
             console.error('Error in collectCompanyData:', error.message);
-            
+
             // Handle authentication errors specially
             if (error.statusCode === 401 || error.message.includes('Authentication failed')) {
                 console.error('Authentication failed for Coresignal collect API');
-                return { 
+                return {
                     error: 'Authentication failed for Coresignal API. Please check your API key.',
                     statusCode: 401
                 };
             }
-            
+
             // If we get a 402 Payment Required error, handle gracefully
             if (error.statusCode === 402 || error.message.includes('Payment required')) {
                 console.log('Coresignal API payment limit reached on collect');
-                return { 
+                return {
                     error: 'Payment required for Coresignal API',
                     statusCode: 402
                 };
             }
-            
+
             // Rethrow general errors
             throw error;
         }
@@ -268,7 +268,7 @@ const coresignalAPI = {
 const webAPI = {
     fetchWebsite: async (url) => {
         try {
-            const response = await apiClient.get('/api/fetch-website', {
+            const response = await apiClient.get('/fetch-website', {
                 params: { url }
             });
             return response.data;
@@ -282,7 +282,7 @@ const webAPI = {
 // Test connection to proxy server
 const testConnection = async () => {
     try {
-        const response = await apiClient.get('/api/test');
+        const response = await apiClient.get('/test');
         console.log('Proxy server connection test result:', response.data);
         return { success: true, message: 'Connected to proxy server successfully' };
     } catch (error) {
