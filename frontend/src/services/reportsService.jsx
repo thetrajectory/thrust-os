@@ -254,7 +254,6 @@ class ReportsService {
     const stepNameMap = {
       'titleRelevance': 'Title Relevance',
       'apolloEnrichment': 'Apollo Lead Enricher',
-      'headcountFilter': 'Headcount Filter',
       'domainScraping': 'Homepage and Sitemap Scrape',
       'companyRelevance': 'Company Relevance',
       'indianLeads': 'Org Enricher',
@@ -418,6 +417,7 @@ class ReportsService {
     const names = {
       titleRelevance: 'Title Relevance',
       apolloEnrichment: 'Apollo Lead Enricher',
+      headcountFilter: 'Headcount Filter',
       domainScraping: 'Homepage and Sitemap Scrape',
       companyRelevance: 'Company Relevance',
       indianLeads: 'Org Enricher',
