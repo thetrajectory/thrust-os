@@ -287,6 +287,7 @@ async function processIndianPresence(
         throw new Error(`Invalid Apollo response for ${orgId}`);
       }
 
+
       const indianHeadcount = response.pagination.total_entries || 0;
       const totalEmployees = parseInt(row.organization?.estimated_num_employees || row['organization.estimated_num_employees'] || 0);
 
@@ -307,6 +308,7 @@ async function processIndianPresence(
 
       logCallback(`Indian presence: ${indianPercentage.toFixed(2)}%`);
 
+      const apolloOrgJson = response.organization ? JSON.stringify(response.organization) : null;
 
       // STEP 3: Store data in Supabase if available
       if (supabaseAvailable) {
@@ -316,6 +318,7 @@ async function processIndianPresence(
           companyUrl,
           indianHeadcount,
           row, // Original data for possible organization JSON
+          apolloOrgJson,
           logCallback
         );
       }
@@ -349,8 +352,8 @@ async function processIndianPresence(
         throw new Error(`Invalid Apollo response for ${orgId} after retry`);
       }
 
-      const indianHeadcount = response.pagination.total_entries || 0;
-      const totalEmployees = parseInt(row.organization?.estimated_num_employees || row['organization.estimated_num_employees'] || 0);
+      const indianHeadcount = response.pagination.total_entries;
+      const totalEmployees = parseInt(row.organization?.estimated_num_employees || row['organization.estimated_num_employees']);
 
       if (!totalEmployees) {
         throw new Error(`Missing organization employee count for org ${orgId}`);
@@ -361,6 +364,8 @@ async function processIndianPresence(
 
       logCallback(`Apollo returned ${indianHeadcount} Indian contacts out of ${totalEmployees} total employees (${indianPercentage.toFixed(2)}%) after retry`);
 
+      const apolloOrgJson = response.organization ? JSON.stringify(response.organization) : null;
+
       // Store data in Supabase if available
       if (supabaseAvailable) {
         await saveIndianHeadcountToSupabase(
@@ -369,6 +374,7 @@ async function processIndianPresence(
           companyUrl,
           indianHeadcount,
           row,
+          apolloOrgJson,
           logCallback
         );
       }
@@ -396,10 +402,11 @@ async function processIndianPresence(
  * @param {string} companyUrl - Company URL
  * @param {number} headcount - Indian headcount
  * @param {Object} row - Original data row
+ * @param {string} apolloOrgJson - Organization JSON from Apollo API response
  * @param {Function} logCallback - Callback function for logging
  * @returns {Promise<boolean>} - Success indicator
  */
-async function saveIndianHeadcountToSupabase(orgId, companyName, companyUrl, headcount, row, logCallback) {
+async function saveIndianHeadcountToSupabase(orgId, companyName, companyUrl, headcount, row, apolloOrgJson, logCallback) {
   try {
     logCallback(`Saving Indian headcount to Supabase for org ${orgId}`);
 
@@ -414,23 +421,31 @@ async function saveIndianHeadcountToSupabase(orgId, companyName, companyUrl, hea
       logCallback(`Warning: Error checking record existence: ${checkError.message}`);
     }
 
-    // Prepare the organization JSON data if available
-    let orgJsonData = null;
-    if (row.person?.organization || row.organization) {
-      orgJsonData = JSON.stringify(row.person?.organization || row.organization);
-    } else if (row.entire_json_response) {
-      try {
-        // Try to extract organization data from the entire JSON response
-        const parsedJson = typeof row.entire_json_response === 'string'
-          ? JSON.parse(row.entire_json_response)
-          : row.entire_json_response;
+    // Use Apollo organization JSON if available, otherwise fallback to original data
+    let orgJsonData = apolloOrgJson;
 
-        if (parsedJson.organization || (parsedJson.person && parsedJson.person.organization)) {
-          orgJsonData = JSON.stringify(parsedJson.organization || parsedJson.person.organization);
+    // Fallback if Apollo didn't provide organization data
+    if (!orgJsonData) {
+      logCallback('No organization data in Apollo response, using fallback data');
+
+      if (row.person?.organization || row.organization) {
+        orgJsonData = JSON.stringify(row.person?.organization || row.organization);
+      } else if (row.entire_json_response) {
+        try {
+          // Try to extract organization data from the entire JSON response
+          const parsedJson = typeof row.entire_json_response === 'string'
+            ? JSON.parse(row.entire_json_response)
+            : row.entire_json_response;
+
+          if (parsedJson.organization || (parsedJson.person && parsedJson.person.organization)) {
+            orgJsonData = JSON.stringify(parsedJson.organization || parsedJson.person.organization);
+          }
+        } catch (e) {
+          logCallback(`Warning: Could not parse organization JSON: ${e.message}`);
         }
-      } catch (e) {
-        logCallback(`Warning: Could not parse organization JSON: ${e.message}`);
       }
+    } else {
+      logCallback('Using organization data from Apollo response');
     }
 
     // Current date for updated_at
