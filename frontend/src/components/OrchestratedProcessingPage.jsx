@@ -141,13 +141,6 @@ const OrchestratedProcessingPage = () => {
     }
   }, [csvData, logs]);
 
-  // Scroll logs to bottom when new logs are added
-  useEffect(() => {
-    if (logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [logs]);
-
   // Monitor orchestrator state changes
   useEffect(() => {
     const interval = setInterval(() => {
