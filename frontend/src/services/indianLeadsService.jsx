@@ -280,7 +280,6 @@ async function processIndianPresence(
         organization_id: orgId,
         page: 1,
         per_page: 10,
-        show_pagination_data: true
       });
 
       if (!response || !response.pagination) {
@@ -344,8 +343,6 @@ async function processIndianPresence(
         organization_id: orgId,
         page: 1,
         per_page: 10,
-        q_country: 'India',
-        show_pagination_data: true
       });
 
       if (!response || !response.pagination) {

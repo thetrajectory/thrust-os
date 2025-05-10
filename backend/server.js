@@ -104,19 +104,19 @@ app.post('/api/apollo/organizations/contacts/india', async (req, res) => {
     }
     
     // Properly structure the URL with query parameters
-    const url = 'https://api.apollo.io/api/v1/mixed_people/search';
+    const url = 'https://api.apollo.io/api/v1/mixed_people/search/';
     const params = {
-      'organization_locations[]': 'india',
+      'person_locations[]': 'india',
       'organization_ids[]': req.body.organization_id,
       api_key: req.body.api_key,
       page: req.body.page || 1,
       per_page: req.body.per_page || 10,
-      show_pagination_data: true
     };
     
     console.log('Apollo API request params:', params);
     
     const response = await axios.get(url, { params });
+    
     console.log('Apollo API response pagination:', response.data.pagination);
     
     res.json(response.data);
@@ -149,12 +149,11 @@ app.post('/api/apollo/organizations/contacts/othercountries', async (req, res) =
     // Properly structure the URL with query parameters
     const url = 'https://api.apollo.io/api/v1/mixed_people/search';
     const params = {
-      'organization_locations[]': ['pakistan', 'bangladesh', 'indonesia', 'philippines', 'vietnam'],
+      'person_locations[]': ['pakistan', 'bangladesh', 'indonesia', 'philippines', 'vietnam'],
       'organization_ids[]': req.body.organization_id,
       api_key: req.body.api_key,
       page: req.body.page || 1,
       per_page: req.body.per_page || 10,
-      show_pagination_data: true
     };
     
     console.log('Apollo API request params for other countries:', params);

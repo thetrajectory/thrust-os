@@ -296,7 +296,6 @@ async function processOtherCountryPresence(
         organization_id: orgId,
         page: 1,
         per_page: 10,
-        show_pagination_data: true
       });
 
       if (!response || !response.pagination) {
@@ -351,7 +350,6 @@ async function processOtherCountryPresence(
         organization_id: orgId,
         page: 1,
         per_page: 10,
-        show_pagination_data: true
       });
 
       if (!response || !response.pagination) {
