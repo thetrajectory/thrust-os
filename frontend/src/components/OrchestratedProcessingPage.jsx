@@ -26,12 +26,6 @@ const OrchestratedProcessingPage = () => {
   const logsEndRef = useRef(null);
   const initRef = useRef(false);
 
-  useEffect(() => {
-    // Only auto-scroll if user isn't manually scrolling
-    if (logsEndRef.current && !userScrolling) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [logs, userScrolling]);
 
   // Add handlers for detecting user scroll interaction
   const handleScroll = () => {
@@ -733,9 +727,8 @@ const OrchestratedProcessingPage = () => {
             <h3 className="text-xl font-semibold mb-4">Processing Logs</h3>
 
             <div
-              ref={logsContainerRef}
-              onScroll={handleScroll}
               className="bg-gray-900 text-gray-100 p-4 rounded-lg h-[500px] overflow-y-auto font-mono text-sm text-left"
+              style={{ overflowY: 'auto', maxHeight: '500px' }}
             >
               {logs && logs.length > 0 ? (
                 logs.map((log, index) => (
