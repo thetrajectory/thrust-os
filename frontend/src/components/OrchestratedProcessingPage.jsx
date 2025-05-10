@@ -19,9 +19,31 @@ const OrchestratedProcessingPage = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [csvData, setCsvData] = useState(null);
 
+  const [userScrolling, setUserScrolling] = useState(false);
+  const logsContainerRef = useRef(null);
+
   // Refs
   const logsEndRef = useRef(null);
   const initRef = useRef(false);
+
+  useEffect(() => {
+    // Only auto-scroll if user isn't manually scrolling
+    if (logsEndRef.current && !userScrolling) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs, userScrolling]);
+
+  // Add handlers for detecting user scroll interaction
+  const handleScroll = () => {
+    if (!logsContainerRef.current) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = logsContainerRef.current;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 10; // Within 10px of bottom
+
+    // User is considered to be manually scrolling if they're not at the bottom
+    setUserScrolling(!isAtBottom);
+  };
+
 
   // Start processing when component mounts or if not started yet
   useEffect(() => {
@@ -422,21 +444,21 @@ const OrchestratedProcessingPage = () => {
       timestamp: new Date().toLocaleTimeString(),
       message: "PROCESSING TERMINATED BY USER"
     };
-    
+
     // Add termination message to logs
     setLogs(prevLogs => [...prevLogs, terminationLog]);
-    
+
     // Save logs to storage with termination message
     const updatedLogs = [...logs, terminationLog];
     storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.LOGS, updatedLogs);
-    
+
     // Force all processing to stop immediately
     setIsProcessing(false);
     setIsCancelling(false);
-    
+
     // Mark orchestrator as complete to prevent further processing
     enrichmentOrchestrator.processingComplete = true;
-    
+
     // Mark the current step as terminated
     const currentStepId = enrichmentOrchestrator.pipeline[enrichmentOrchestrator.currentStepIndex];
     if (currentStepId) {
@@ -448,7 +470,7 @@ const OrchestratedProcessingPage = () => {
       setProcessStatus(updatedStatus);
       storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.PROCESS_STATUS, updatedStatus);
     }
-    
+
     // Save the current state of data processing
     storageUtils.saveToStorage(
       storageUtils.STORAGE_KEYS.PROCESSED,
@@ -458,23 +480,23 @@ const OrchestratedProcessingPage = () => {
       storageUtils.STORAGE_KEYS.FILTERED,
       enrichmentOrchestrator.filteredData || enrichmentOrchestrator.processedData || csvData
     );
-    
+
     // Optional: Jump directly to results page instead of waiting
     handleViewResults();
   };
-  
+
   // Enhance handleViewResults to handle terminated state
   const handleViewResults = () => {
     // Get the data regardless of completion state
     const allData = enrichmentOrchestrator.processedData || csvData;
-    
+
     // Save processed data
     storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.PROCESSED, allData);
-    
+
     // Get any filtered data if available, otherwise use all processed data
     const filteredData = enrichmentOrchestrator.filteredData || allData;
     storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.FILTERED, filteredData);
-    
+
     // Add termination analytics if cancelled
     if (isCancelling) {
       const terminationAnalytics = {
@@ -483,13 +505,13 @@ const OrchestratedProcessingPage = () => {
         completedSteps: enrichmentOrchestrator.currentStepIndex,
         totalSteps: enrichmentOrchestrator.pipeline.length
       };
-      
+
       storageUtils.saveToStorage(
         storageUtils.STORAGE_KEYS.ANALYTICS,
         { ...analytics, termination: terminationAnalytics }
       );
     }
-    
+
     // Navigate to results page
     navigate('/results');
   };
@@ -710,7 +732,11 @@ const OrchestratedProcessingPage = () => {
           <div className="bg-white shadow-md rounded-lg p-6 h-full">
             <h3 className="text-xl font-semibold mb-4">Processing Logs</h3>
 
-            <div className="bg-gray-900 text-gray-100 p-4 rounded-lg h-[500px] overflow-y-auto font-mono text-sm text-left">
+            <div
+              ref={logsContainerRef}
+              onScroll={handleScroll}
+              className="bg-gray-900 text-gray-100 p-4 rounded-lg h-[500px] overflow-y-auto font-mono text-sm text-left"
+            >
               {logs && logs.length > 0 ? (
                 logs.map((log, index) => (
                   <div key={index} className="mb-1">
