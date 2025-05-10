@@ -294,8 +294,8 @@ async function processOtherCountryPresence(
       const response = await apiClient.apollo.getOtherCountryContacts({
         api_key: apiKey,
         organization_id: orgId,
-        page: 1,
-        per_page: 10,
+        // page: 1,
+        // per_page: 10,
       });
 
       if (!response || !response.pagination) {
@@ -348,8 +348,8 @@ async function processOtherCountryPresence(
       const response = await apiClient.apollo.getOtherCountryContacts({
         api_key: apiKey,
         organization_id: orgId,
-        page: 1,
-        per_page: 10,
+        // page: 1,
+        // per_page: 10,
       });
 
       if (!response || !response.pagination) {

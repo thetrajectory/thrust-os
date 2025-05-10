@@ -86,8 +86,8 @@ const apolloAPI = {
             const requestData = {
                 api_key: data.api_key,
                 organization_id: data.organization_id,
-                page: data.page || 1,
-                per_page: data.per_page || 10,
+                // page: data.page || 1,
+                // per_page: data.per_page || 10,
             };
 
             const response = await apiClient.post('/apollo/organizations/contacts/india', requestData);
@@ -108,8 +108,8 @@ const apolloAPI = {
             const requestData = {
                 api_key: data.api_key,
                 organization_id: data.organization_id,
-                page: data.page || 1,
-                per_page: data.per_page || 10,
+                // page: data.page || 1,
+                // per_page: data.per_page || 10,
             };
 
             const response = await apiClient.post('/apollo/organizations/contacts/othercountries', requestData);

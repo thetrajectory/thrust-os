@@ -109,8 +109,8 @@ app.post('/api/apollo/organizations/contacts/india', async (req, res) => {
       'person_locations[]': 'india',
       'organization_ids[]': req.body.organization_id,
       api_key: req.body.api_key,
-      page: req.body.page || 1,
-      per_page: req.body.per_page || 10,
+      // page: req.body.page || 1,
+      // per_page: req.body.per_page || 10,
     };
     
     console.log('Apollo API request params:', params);
@@ -152,8 +152,8 @@ app.post('/api/apollo/organizations/contacts/othercountries', async (req, res) =
       'person_locations[]': ['pakistan', 'bangladesh', 'indonesia', 'philippines', 'vietnam'],
       'organization_ids[]': req.body.organization_id,
       api_key: req.body.api_key,
-      page: req.body.page || 1,
-      per_page: req.body.per_page || 10,
+      // page: req.body.page || 1,
+      // per_page: req.body.per_page || 10,
     };
     
     console.log('Apollo API request params for other countries:', params);

@@ -278,8 +278,8 @@ async function processIndianPresence(
       const response = await apiClient.apollo.getIndianContacts({
         api_key: apiKey,
         organization_id: orgId,
-        page: 1,
-        per_page: 10,
+        // page: 1,
+        // per_page: 10,
       });
 
       if (!response || !response.pagination) {
@@ -341,8 +341,8 @@ async function processIndianPresence(
       const response = await apiClient.apollo.getIndianContacts({
         api_key: apiKey,
         organization_id: orgId,
-        page: 1,
-        per_page: 10,
+        // page: 1,
+        // per_page: 10,
       });
 
       if (!response || !response.pagination) {
