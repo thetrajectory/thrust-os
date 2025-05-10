@@ -13,10 +13,30 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
+app.use(
+  helmet.contentSecurityPolicy({
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "blob:", "'unsafe-inline'", "'unsafe-eval'"],
+      connectSrc: ["'self'", "https://api.openai.com", "https://api.apollo.io", "https://api.coresignal.com", "https://scrape.serper.dev", "https://*.supabase.co"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
+      fontSrc: ["'self'", "data:"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'", "blob:"],
+      workerSrc: ["'self'", "blob:"],
+      frameSrc: ["'self'"],
+      childSrc: ["'self'", "blob:"],
+      formAction: ["'self'"],
+      baseUri: ["'self'"],
+      manifestSrc: ["'self'"],
+    },
+  })
+);
 app.use(cors({ origin: true, credentials: true }));
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
-app.use(helmet());
+
 
 // Error handling middleware
 app.use((err, req, res, next) => {
