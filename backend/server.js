@@ -159,16 +159,9 @@ app.post('/api/apollo/organizations/contacts/othercountries', async (req, res) =
 // OpenAI API proxy
 app.post('/api/openai/chat/completions', async (req, res) => {
   try {
-    console.log('Proxying OpenAI chat/completions request...');
-    
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return res.status(401).json({ error: 'OpenAI API key not configured' });
-    }
-    
-    // Validate request body
-    if (!req.body || !req.body.messages) {
-      return res.status(400).json({ error: 'Valid request body with messages is required' });
     }
     
     const response = await axios.post(
@@ -182,17 +175,11 @@ app.post('/api/openai/chat/completions', async (req, res) => {
       }
     );
     
-    console.log('OpenAI API response received successfully');
     res.json(response.data);
   } catch (error) {
-    console.error('OpenAI API error:', error.message);
-    
-    // Structured error response
     res.status(error.response?.status || 500).json({
-      error: {
-        message: 'Error calling OpenAI API',
-        details: error.response?.data || error.message
-      }
+      error: 'Error calling OpenAI API',
+      details: error.response?.data || error.message
     });
   }
 });

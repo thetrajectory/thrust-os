@@ -236,22 +236,22 @@ async function processSingleTitle(row, index, apiKey, model, logCallback) {
 
   try {
     logCallback(`Analyzing position: ${position}`);
-    
+
     // Call OpenAI API
     const result = await callOpenAIAPI(position, apiKey, model);
 
     const tokenUsage = result.totalTokens || 0;
-    
+
     // Extract and normalize the response
     const responseText = result.completion.trim();
-    
+
     // Exact match to one of the three valid categories
     let relevance;
     let score;
-    
+
     // After getting the OpenAI response
     console.log("OpenAI raw response:", responseText);
-    
+
     // Use exact matching for categories
     if (responseText.toLowerCase() === 'founder') {
       relevance = 'Founder';
@@ -277,7 +277,7 @@ async function processSingleTitle(row, index, apiKey, model, logCallback) {
       }
       logCallback(`Warning: Unexpected response format "${responseText}" for position "${position}". Defaulting to ${relevance}.`);
     }
-    
+
     return {
       index,
       data: {
@@ -329,12 +329,11 @@ async function callOpenAIAPI(position, apiKey, model) {
 
   try {
     // Make the API request
-    const response = await axios.post('https://api.openai.com/v1/chat/completions', requestData, {
+    const response = await axios.post('/api/openai/chat/completions', requestData, {
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+        'Content-Type': 'application/json'
       },
-      timeout: 10000 // 10 second timeout
+      timeout: 10000
     });
 
     // Check for errors

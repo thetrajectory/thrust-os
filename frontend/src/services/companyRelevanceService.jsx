@@ -103,7 +103,7 @@ const COMPANY_RELEVANCE_PROMPT = (companyDesc, websiteContent) => {
 export async function processCompanyRelevance(data, logCallback, progressCallback) {
   logCallback("Starting Company Relevance Analysis...");
 
-   const startTimestamp = Date.now();
+  const startTimestamp = Date.now();
 
   // Get configuration from environment variables
   const apiKey = import.meta.env.VITE_REACT_APP_OPENAI_API_KEY;
