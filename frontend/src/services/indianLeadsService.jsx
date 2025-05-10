@@ -307,7 +307,7 @@ async function processIndianPresence(
 
       logCallback(`Indian presence: ${indianPercentage.toFixed(2)}%`);
 
-      const apolloOrgJson = response.organization ? JSON.stringify(response.organization) : null;
+      const apolloOrgJson = response? JSON.stringify(response) : null;
 
       // STEP 3: Store data in Supabase if available
       if (supabaseAvailable) {
@@ -361,7 +361,7 @@ async function processIndianPresence(
 
       logCallback(`Apollo returned ${indianHeadcount} Indian contacts out of ${totalEmployees} total employees (${indianPercentage.toFixed(2)}%) after retry`);
 
-      const apolloOrgJson = response.organization ? JSON.stringify(response.organization) : null;
+      const apolloOrgJson = response ? JSON.stringify(response) : null;
 
       // Store data in Supabase if available
       if (supabaseAvailable) {
