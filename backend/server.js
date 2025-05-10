@@ -4,6 +4,8 @@ const cors = require('cors');
 const axios = require('axios');
 const bodyParser = require('body-parser');
 const path = require('path');
+const helmet = require('helmet');
+
 
 require('dotenv').config();
 
@@ -14,6 +16,7 @@ const PORT = process.env.PORT || 5000;
 app.use(cors({ origin: true, credentials: true }));
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
+app.use(helmet());
 
 // Error handling middleware
 app.use((err, req, res, next) => {
