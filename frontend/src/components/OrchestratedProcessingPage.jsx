@@ -417,8 +417,81 @@ const OrchestratedProcessingPage = () => {
 
   // Handle cancellation
   const handleCancelProcessing = () => {
-    setIsCancelling(true);
-    enrichmentOrchestrator.cancelProcessing();
+    // Log termination message
+    const terminationLog = {
+      timestamp: new Date().toLocaleTimeString(),
+      message: "PROCESSING TERMINATED BY USER"
+    };
+    
+    // Add termination message to logs
+    setLogs(prevLogs => [...prevLogs, terminationLog]);
+    
+    // Save logs to storage with termination message
+    const updatedLogs = [...logs, terminationLog];
+    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.LOGS, updatedLogs);
+    
+    // Force all processing to stop immediately
+    setIsProcessing(false);
+    setIsCancelling(false);
+    
+    // Mark orchestrator as complete to prevent further processing
+    enrichmentOrchestrator.processingComplete = true;
+    
+    // Mark the current step as terminated
+    const currentStepId = enrichmentOrchestrator.pipeline[enrichmentOrchestrator.currentStepIndex];
+    if (currentStepId) {
+      const updatedStatus = { ...processStatus };
+      updatedStatus[currentStepId] = {
+        status: 'cancelled',
+        message: 'Terminated by user'
+      };
+      setProcessStatus(updatedStatus);
+      storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.PROCESS_STATUS, updatedStatus);
+    }
+    
+    // Save the current state of data processing
+    storageUtils.saveToStorage(
+      storageUtils.STORAGE_KEYS.PROCESSED,
+      enrichmentOrchestrator.processedData || csvData
+    );
+    storageUtils.saveToStorage(
+      storageUtils.STORAGE_KEYS.FILTERED,
+      enrichmentOrchestrator.filteredData || enrichmentOrchestrator.processedData || csvData
+    );
+    
+    // Optional: Jump directly to results page instead of waiting
+    handleViewResults();
+  };
+  
+  // Enhance handleViewResults to handle terminated state
+  const handleViewResults = () => {
+    // Get the data regardless of completion state
+    const allData = enrichmentOrchestrator.processedData || csvData;
+    
+    // Save processed data
+    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.PROCESSED, allData);
+    
+    // Get any filtered data if available, otherwise use all processed data
+    const filteredData = enrichmentOrchestrator.filteredData || allData;
+    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.FILTERED, filteredData);
+    
+    // Add termination analytics if cancelled
+    if (isCancelling) {
+      const terminationAnalytics = {
+        terminated: true,
+        terminationTime: new Date().toISOString(),
+        completedSteps: enrichmentOrchestrator.currentStepIndex,
+        totalSteps: enrichmentOrchestrator.pipeline.length
+      };
+      
+      storageUtils.saveToStorage(
+        storageUtils.STORAGE_KEYS.ANALYTICS,
+        { ...analytics, termination: terminationAnalytics }
+      );
+    }
+    
+    // Navigate to results page
+    navigate('/results');
   };
 
   // Ensure the pipeline continues automatically
@@ -430,21 +503,6 @@ const OrchestratedProcessingPage = () => {
     }
   }, [isProcessing, enrichmentOrchestrator.currentStepIndex]);
 
-  // Handle complete processing to view results
-  const handleViewResults = () => {
-    // Get all data at the end, even if some didn't complete the full flow
-    const allData = enrichmentOrchestrator.processedData || csvData;
-
-    // Save final processed data
-    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.PROCESSED, allData);
-
-    // Get filtered data if available
-    const filteredData = enrichmentOrchestrator.filteredData || allData;
-    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.FILTERED, filteredData);
-
-    // Navigate to results page
-    navigate('/results');
-  };
 
   const handleBack = () => {
     navigate('/upload');
