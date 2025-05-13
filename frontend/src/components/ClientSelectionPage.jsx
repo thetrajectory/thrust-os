@@ -36,6 +36,12 @@ const ClientSelectionPage = () => {
       <h2 className="text-4xl font-bold text-center mb-12">
         Choose client for {engine || 'Selected Engine'}
       </h2>
+
+      <div className="bg-blue-50 p-4 rounded-lg mb-8 max-w-xl text-center">
+        <p className="text-blue-700">
+          <span className="font-bold">Note:</span> Currently, full enrichment pipeline is only available for Incommon AI client.
+        </p>
+      </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-4xl">
         {clients.map((client, index) => (
           <button

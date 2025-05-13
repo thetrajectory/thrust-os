@@ -1,15 +1,14 @@
 // App.jsx
 import React, { useState } from 'react';
 import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import './App.css';
 import AdvisorSelectionPage from './components/AdvisorSelectionPage';
 import ClientSelectionPage from './components/ClientSelectionPage';
 import FileUploadPage from './components/FileUploadPage';
 import LandingPage from './components/LandingPage';
 import OrchestratedProcessingPage from './components/OrchestratedProcessingPage';
-import ProxyConnectionTest from './components/ProxyConnectionTest';
 import ResultsPage from './components/ResultsPage';
 import enrichmentOrchestrator from './services/enrichmentOrchestrator';
-import './App.css'
 
 const App = () => {
   // Navigation hooks (now works because we're inside BrowserRouter)
@@ -43,17 +42,32 @@ const App = () => {
     navigate('/upload');
   };
 
+  const isIncommonClient = () => {
+    return selectedClient === 'Incommon AI';
+  };
+
   const handleFileUpload = (file, data) => {
     setCsvFile(file);
 
     // Add advisor info to the data
     const enrichedData = data.map(row => ({
       ...row,
-      advisorName: selectedAdvisor
+      advisorName: selectedAdvisor,
+      connected_on: row.connected_on || new Date().toISOString(),
+      relevanceTag: ''
     }));
 
     setCsvData(enrichedData);
-    navigate('/processing');
+
+    if (isIncommonClient()) {
+      navigate('/processing');
+    } else {
+      // For other clients, we'll just skip processing for now (placeholder for V2)
+      setProcessedData(enrichedData);
+      setFilteredData(enrichedData);
+      navigate('/results');
+    }
+
   };
 
   const handleProcessingComplete = (filteredData) => {
