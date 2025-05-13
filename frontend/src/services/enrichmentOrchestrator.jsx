@@ -258,7 +258,28 @@ class EnrichmentOrchestrator {
     this.addLog('Normalizing data structure for domain scraping...');
 
     // Clone the data to avoid modifying the original objects
-    const normalizedData = JSON.parse(JSON.stringify(data));
+    const normalizedData = data.map(row => {
+      // Create a deep copy while handling potential undefined values
+      try {
+        return JSON.parse(JSON.stringify(row));
+      } catch (e) {
+        // If JSON stringify fails, do a shallow copy and manually copy nested properties
+        this.addLog(`Warning: Could not deep clone row, using fallback method. Error: ${e.message}`);
+        const copy = { ...row };
+
+        // Manually copy organization property if it exists
+        if (row.organization) {
+          copy.organization = { ...row.organization };
+        }
+
+        // Manually copy person property if it exists
+        if (row.person) {
+          copy.person = { ...row.person };
+        }
+
+        return copy;
+      }
+    });
 
     let fixedCount = 0;
     let alreadyNestedCount = 0;
@@ -277,6 +298,11 @@ class EnrichmentOrchestrator {
       if (row.organization.website_url || row.organization.primary_domain) {
         alreadyNestedCount++;
         domainFound = true;
+        this.addLog(`Found website URL in organization.website_url: ${row.organization.website_url}`);
+      } else if (row.organization.primary_domain) {
+        alreadyNestedCount++;
+        domainFound = true;
+        this.addLog(`Found website URL in organization.primary_domain: ${row.organization.primary_domain}`);
       }
 
       // Process flattened fields
@@ -292,13 +318,20 @@ class EnrichmentOrchestrator {
               row.organization = {};
             }
 
-            // Copy value to nested path
-            row.organization[fieldName] = row[key];
+            // Check if the value exists before copying
+            if (row[key] !== undefined) {
+              row.organization[fieldName] = row[key];
+            }
 
             // Track if we found domain info
             if ((fieldName === 'website_url' || fieldName === 'primary_domain') && row[key]) {
               domainFound = true;
               fixedCount++;
+              this.addLog(`Fixed website URL from organization.website_url field: ${row[key]}`);
+            } else if (fieldName === 'primary_domain' && row[key] && !domainFound) {
+              domainFound = true;
+              fixedCount++;
+              this.addLog(`Fixed website URL from organization.primary_domain field: ${row[key]}`);
             }
           }
         }
@@ -309,6 +342,8 @@ class EnrichmentOrchestrator {
         // Try website field
         if (row.website) {
           domainFound = true;
+          row.organization.website_url = row.website;
+          this.addLog(`Using website field for domain: ${row.website}`);
         }
         // Try to create domain from company name as last resort
         else if (row.company) {
@@ -320,6 +355,7 @@ class EnrichmentOrchestrator {
 
           if (simplifiedName) {
             row.website = `https://${simplifiedName}.com`;
+            row.organization.website_url = row.website;
             this.addLog(`Created fallback domain for ${row.company}: ${row.website}`);
             domainFound = true;
           }
@@ -438,7 +474,30 @@ class EnrichmentOrchestrator {
         // Special pre-processing for domain scraping
         if (stepId === 'domainScraping') {
           // Normalize data structure before domain scraping
-          this.processedData = this.normalizeDataStructure(this.processedData);
+          // IMPORTANT: Only normalize untagged rows
+          const untaggedRows = this.processedData.filter(row => !row.relevanceTag);
+          this.addLog(`Normalizing data structure for ${untaggedRows.length} untagged rows...`);
+
+          // Normalize only untagged rows
+          const normalizedUntaggedRows = this.normalizeDataStructure(untaggedRows);
+
+          // Create a map for normalized rows
+          const normalizedRowsMap = new Map();
+          normalizedUntaggedRows.forEach(row => {
+            const key = row.linkedin_url || (row.organization && row.organization.id) || row.id;
+            if (key) normalizedRowsMap.set(key, row);
+          });
+
+          // Update only the untagged rows in the original data
+          this.processedData = this.processedData.map(row => {
+            if (row.relevanceTag) return row; // Skip tagged rows
+
+            const key = row.linkedin_url || (row.organization && row.organization.id) || row.id;
+            if (key && normalizedRowsMap.has(key)) {
+              return normalizedRowsMap.get(key);
+            }
+            return row;
+          });
           this.filteredData = this.normalizeDataStructure(this.filteredData);
         }
 

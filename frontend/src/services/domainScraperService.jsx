@@ -97,11 +97,22 @@ export async function scrapeDomain(data, logCallback, progressCallback) {
       const index = i + j;
       const row = untaggedData[index];
 
-
       // Get domain from organization or fallback to website_url or other fields
-      const domain = extractDomain(row.organization?.website_url ||
-        row.organization?.primary_domain ||
-        row.website);
+      // Prioritize organization.website_url as requested
+      const domain = extractDomain(
+        row.organization?.website_url ||  // First choice
+        row.organization?.primary_domain || // Second choice
+        row.website  // Fallback
+      );
+
+      // Log where the domain was found
+      if (row.organization?.website_url) {
+        logCallback(`Using domain from organization.website_url: ${row.organization.website_url}`);
+      } else if (row.organization?.primary_domain) {
+        logCallback(`Using domain from organization.primary_domain: ${row.organization.primary_domain}`);
+      } else if (row.website) {
+        logCallback(`Using domain from website field: ${row.website}`);
+      }
 
       // Skip if no valid domain
       if (!domain) {
@@ -274,10 +285,13 @@ async function scrapeSingleDomain(
   try {
     // Log more details about the domain
     logCallback(`Processing domain: ${domain}`);
-    logCallback(`Domain source: ${row.organization?.website_url ? 'organization.website_url' :
-      row.organization?.primary_domain ? 'organization.primary_domain' :
-        row.website ? 'row.website' : 'unknown'
-      }`);
+
+    const websiteUrl = row.organization?.website_url;
+
+    if (websiteUrl) {
+      logCallback(`Using organization.website_url: ${websiteUrl}`);
+      domain = extractDomain(websiteUrl);
+    }
 
     const orgId = row.organization?.id;
     let cleanDomain = domain;
