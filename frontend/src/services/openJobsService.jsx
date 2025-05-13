@@ -41,9 +41,48 @@ function isDataStale(updatedAt, createdAt) {
 export async function scrapeOpenJobs(data, logCallback, progressCallback) {
   logCallback("Starting Open Jobs Scraping...");
 
+  if (!data || !Array.isArray(data)) {
+    logCallback("Error: Invalid data input for Open Jobs Scraping.");
+    return {
+      data: data || [],
+      analytics: {
+        supabaseHits: 0,
+        coresignalFetches: 0,
+        skippedCount: 0,
+        errorCount: 0,
+        creditsUsed: 0,
+        jobCounts: { high: 0, medium: 0, low: 0, none: 0 },
+        totalProcessed: 0,
+        startTime: Date.now(),
+        endTime: Date.now(),
+        processingTimeSeconds: 0
+      }
+    };
+  }
+
   // Only process untagged rows
   const untaggedData = data.filter(row => !row.relevanceTag);
   logCallback(`Processing ${untaggedData.length} untagged rows out of ${data.length} total rows.`);
+
+  // Return early if no untagged data
+  if (untaggedData.length === 0) {
+    logCallback("No untagged rows to process. Skipping Open Jobs Scraping.");
+    return {
+      data: data,
+      analytics: {
+        supabaseHits: 0,
+        coresignalFetches: 0,
+        skippedCount: 0,
+        errorCount: 0,
+        creditsUsed: 0,
+        jobCounts: { high: 0, medium: 0, low: 0, none: 0 },
+        totalProcessed: 0,
+        startTime: Date.now(),
+        endTime: Date.now(),
+        processingTimeSeconds: 0
+      }
+    };
+  }
 
   const startTimestamp = Date.now();
 

@@ -471,14 +471,20 @@ class EnrichmentOrchestrator {
       if (stepId === 'headcountFilter') {
         await this.processHeadcountFilter();
       } else {
-        
+
         // Count untagged rows for this step
         const untaggedRows = stepId === 'titleRelevance'
           ? this.processedData  // For first step, process all rows
           : this.processedData.filter(row => !row.relevanceTag);  // For subsequent steps, only process untagged rows
 
+        // Make sure we have processed data and it's an array
+        if (!this.processedData || !Array.isArray(this.processedData)) {
+          this.addLog(`Error: No valid processed data available for ${stepName}.`);
+          throw new Error(`No valid processed data available for ${stepName}`);
+        }
+
         // Make sure we have data to process
-        if (untaggedRows.length === 0) {
+        if (!untaggedRows || untaggedRows.length === 0) {
           this.addLog(`Warning: No untagged rows available for ${stepName}. Skipping step.`);
 
           // Mark step as complete but skipped
