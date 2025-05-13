@@ -145,6 +145,14 @@ export async function processCompanyRelevance(data, logCallback, progressCallbac
       const index = i + j;
       const row = data[index];
 
+      // Skip processing if row is already tagged
+      if (row.relevanceTag) {
+        logCallback(`Skipping item ${index + 1}: Already tagged as "${row.relevanceTag}"`);
+        skippedCount++;
+        progressCallback((index + 1) / data.length * 100);
+        continue;
+      }
+
       // Skip rows that are marked as irrelevant in title relevance step
       if (row.titleRelevance === 'Irrelevant') {
         logCallback(`Skipping item ${index + 1}: Irrelevant title`);

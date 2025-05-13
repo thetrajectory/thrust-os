@@ -811,154 +811,128 @@ class EnrichmentOrchestrator {
     let filteredCount = 0;
     let filterReason = {};
 
-    // Create a copy of filtered data for filtering
-    const previousData = [...data];
+    // Track which rows need further processing (those without tags)
+    const rowsForProcessing = [...data];
 
     switch (stepId) {
       case 'titleRelevance':
-        // Only keep "Founder" and "Relevant" title relevance for filtered data
-        this.addLog(`Filtering by title relevance (keeping Founder and Relevant)...`);
+        // For each row, check if it should be tagged
+        this.addLog(`Checking title relevance for ${data.length} rows...`);
 
-        this.filteredData = previousData.filter(row => {
+        // Process every row but tag the ones that don't meet criteria
+        rowsForProcessing.forEach(row => {
           if (row.titleRelevance === 'Founder' || row.titleRelevance === 'Relevant') {
             filteredCount++;
-            return true;
-          }
-
-          // Apply tag for filtered-out rows - New code
-          row.relevanceTag = row.relevanceTag || `Irrelevant Title: ${row.titleRelevance || 'Unknown'}`;
-
-          // Track reason for filtering
-          filterReason[row.titleRelevance || 'Unknown'] =
-            (filterReason[row.titleRelevance || 'Unknown'] || 0) + 1;
-
-          return false;
-        });
-
-        // Important: Update the processedData with tags as well
-        this.processedData = this.processedData.map(row => {
-          if (row.titleRelevance !== 'Founder' && row.titleRelevance !== 'Relevant') {
+            // Keep this row untagged so it will be processed further
+          } else {
+            // Apply tag for filtered-out rows 
             row.relevanceTag = row.relevanceTag || `Irrelevant Title: ${row.titleRelevance || 'Unknown'}`;
+
+            // Track reason for filtering
+            filterReason[row.titleRelevance || 'Unknown'] =
+              (filterReason[row.titleRelevance || 'Unknown'] || 0) + 1;
           }
-          return row;
         });
 
-        this.filterAnalytics.titleRelevance = {
-          originalCount,
-          filteredCount,
-          filterReason
-        };
-
-        this.addLog(`Title relevance filtering: ${filteredCount} records passed (Founder/Relevant), ${originalCount - filteredCount} filtered out.`);
-        break;
-
-      case 'companyRelevance':
-        // Only keep relevance scores 3+
-        this.addLog(`Filtering by company relevance (keeping scores 3, 4, and 5)...`);
-
-        this.filteredData = previousData.filter(row => {
-          const score = row.companyRelevanceScore || 0;
-
-          if (score >= 3) {
-            filteredCount++;
-            return true;
-          }
-
-          // Apply tag for filtered-out rows - New code
-          row.relevanceTag = row.relevanceTag || `Low Company Relevance: Score ${score}/5`;
-
-          // Track reason for filtering
-          filterReason[`Score: ${score}`] = (filterReason[`Score: ${score}`] || 0) + 1;
-
-          return false;
-        });
-
-        // Update the processedData with tags as well
-        this.processedData = this.processedData.map(row => {
-          const score = row.companyRelevanceScore || 0;
-          if (score < 3) {
-            row.relevanceTag = row.relevanceTag || `Low Company Relevance: Score ${score}/5`;
-          }
-          return row;
-        });
-
-        this.filterAnalytics.companyRelevance = {
-          originalCount,
-          filteredCount,
-          filterReason
-        };
-
-        this.addLog(`Company relevance filtering: ${filteredCount} records passed (Score 3+), ${originalCount - filteredCount} filtered out.`);
-        break;
-
-      case 'indianLeads':
-        // Only keep <20% Indian headcount
-        const tooManyIndiansThreshold = parseInt(import.meta.env.VITE_REACT_APP_TOO_MANY_INDIANS_THRESHOLD || "20");
-        this.addLog(`Filtering by Indian headcount percentage (keeping <${tooManyIndiansThreshold}%)...`);
-
-        this.filteredData = previousData.filter(row => {
-          const percentage = row.percentage_headcount_for_india || 0;
-
-          if (percentage < tooManyIndiansThreshold) {
-            filteredCount++;
-            return true;
-          }
-
-          // Apply tag for filtered-out rows - New code
-          row.relevanceTag = row.relevanceTag || `Too Many Indians: ${Math.round(percentage)}%`;
-
-          // Track reason for filtering
-          filterReason[`Indian headcount ≥${tooManyIndiansThreshold}%`] = (filterReason[`Indian headcount ≥${tooManyIndiansThreshold}%`] || 0) + 1;
-
-          return false;
-        });
-
-        // Update the processedData with tags as well
-        this.processedData = this.processedData.map(row => {
-          const percentage = row.percentage_headcount_for_india || 0;
-          if (percentage >= tooManyIndiansThreshold) {
-            row.relevanceTag = row.relevanceTag || `Too Many Indians: ${Math.round(percentage)}%`;
-          }
-          return row;
-        });
-
-        this.filterAnalytics.indianLeads = {
-          originalCount,
-          filteredCount,
-          filterReason
-        };
-
-        this.addLog(`Indian headcount filtering: ${filteredCount} records passed (<${tooManyIndiansThreshold}%), ${originalCount - filteredCount} filtered out.`);
+        this.addLog(`Title relevance filtering: ${filteredCount} rows passed (Founder/Relevant), ${originalCount - filteredCount} tagged with "Irrelevant".`);
         break;
 
       case 'headcountFilter':
-        // Apply tags for headcount filter, even though this is handled separately
-        this.processedData = this.processedData.map(row => {
-          const employeeCount = row.organization?.estimated_num_employees ||
+        // Employee count filtering
+        this.addLog(`Checking headcount for ${data.length} rows...`);
+
+        rowsForProcessing.forEach(row => {
+          // Skip already tagged rows
+          if (row.relevanceTag) return;
+
+          const employeeCount =
+            row.organization?.estimated_num_employees ||
             row['organization.estimated_num_employees'] ||
             row.employees;
 
           if (employeeCount) {
-            const count = parseInt(employeeCount);
+            const normalizedCount = String(employeeCount).replace(/[^\d]/g, '');
+            const count = parseInt(normalizedCount);
+
             if (!isNaN(count)) {
               if (count < 10) {
-                row.relevanceTag = row.relevanceTag || `Too Small: ${count} employees`;
+                // Tag for too small companies
+                row.relevanceTag = `Too Small: ${count} employees`;
+                filterReason['Too Small'] = (filterReason['Too Small'] || 0) + 1;
               } else if (count > 1500) {
-                row.relevanceTag = row.relevanceTag || `Too Large: ${count} employees`;
+                // Tag for too large companies
+                row.relevanceTag = `Too Large: ${count} employees`;
+                filterReason['Too Large'] = (filterReason['Too Large'] || 0) + 1;
+              } else {
+                filteredCount++;
+                // Keep untagged for further processing
               }
             }
           }
-          return row;
         });
+
+        this.addLog(`Headcount filtering: ${filteredCount} rows passed, ${originalCount - filteredCount} tagged with size issues.`);
+        break;
+
+      case 'companyRelevance':
+        // Company relevance score filtering
+        this.addLog(`Checking company relevance scores for ${data.length} rows...`);
+
+        rowsForProcessing.forEach(row => {
+          // Skip already tagged rows
+          if (row.relevanceTag) return;
+
+          const score = row.companyRelevanceScore || 0;
+
+          if (score >= 3) {
+            filteredCount++;
+            // Keep untagged for further processing
+          } else {
+            // Tag for low relevance
+            row.relevanceTag = row.relevanceTag || `Low Company Relevance: Score ${score}/5`;
+
+            // Track reason for filtering
+            filterReason[`Score: ${score}`] = (filterReason[`Score: ${score}`] || 0) + 1;
+          }
+        });
+
+        this.addLog(`Company relevance filtering: ${filteredCount} rows passed (Score 3+), ${originalCount - filteredCount} tagged with low relevance.`);
+        break;
+
+      case 'indianLeads':
+        // Indian headcount percentage filtering
+        const tooManyIndiansThreshold = parseInt(import.meta.env.VITE_REACT_APP_TOO_MANY_INDIANS_THRESHOLD || "20");
+        this.addLog(`Checking Indian headcount percentage (keeping <${tooManyIndiansThreshold}%)...`);
+
+        rowsForProcessing.forEach(row => {
+          // Skip already tagged rows
+          if (row.relevanceTag) return;
+
+          const percentage = row.percentage_headcount_for_india || 0;
+
+          if (percentage < tooManyIndiansThreshold) {
+            filteredCount++;
+            // Keep untagged for further processing
+          } else {
+            // Tag for too many Indians
+            row.relevanceTag = row.relevanceTag || `Too Many Indians: ${Math.round(percentage)}%`;
+
+            // Track reason for filtering
+            filterReason[`Indian headcount ≥${tooManyIndiansThreshold}%`] =
+              (filterReason[`Indian headcount ≥${tooManyIndiansThreshold}%`] || 0) + 1;
+          }
+        });
+
+        this.addLog(`Indian headcount filtering: ${filteredCount} rows passed (<${tooManyIndiansThreshold}%), ${originalCount - filteredCount} tagged with high Indian %.`);
         break;
 
       default:
-        // For other steps, just update filtered data without filtering
-        this.filteredData = data;
-        filteredCount = data.length;
+        // For other steps, don't filter, just pass through
+        filteredCount = rowsForProcessing.length;
+        this.addLog(`No filtering applied for step: ${stepId}`);
     }
 
-    // Update step analytics with filtering info
+    // Update analytics with filtering info
     if (this.analytics[stepId]) {
       this.analytics[stepId].filtering = {
         originalCount,
@@ -974,6 +948,10 @@ class EnrichmentOrchestrator {
         this.statusCallback(this.stepStatus);
       }
     }
+
+    // IMPORTANT: Don't filter out rows! Just update to make sure tags are persistent
+    this.processedData = data;
+    this.filteredData = data.filter(row => !row.relevanceTag);
   }
 
   /**

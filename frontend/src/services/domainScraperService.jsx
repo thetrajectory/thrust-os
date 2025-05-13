@@ -14,20 +14,20 @@ function isDataStale(updatedAt, createdAt) {
     const staleDate = new Date();
     const thresholdDays = parseInt(import.meta.env.VITE_REACT_APP_DATA_STALENESS_DAYS || "90");
     staleDate.setDate(staleDate.getDate() - thresholdDays);
-    
+
     return lastUpdate < staleDate;
   }
-  
+
   // Fall back to created_at if updated_at is missing
   if (createdAt) {
     const createDate = new Date(createdAt);
     const staleDate = new Date();
     const thresholdDays = parseInt(import.meta.env.VITE_REACT_APP_DATA_STALENESS_DAYS || "90");
     staleDate.setDate(staleDate.getDate() - thresholdDays);
-    
+
     return createDate < staleDate;
   }
-  
+
   // If both are missing, consider it stale
   return true;
 }
@@ -85,6 +85,14 @@ export async function scrapeDomain(data, logCallback, progressCallback) {
     for (let j = 0; j < currentBatchSize; j++) {
       const index = i + j;
       const row = data[index];
+
+      // Skip processing if row is already tagged
+      if (row.relevanceTag) {
+        logCallback(`Skipping item ${index + 1}: Already tagged as "${row.relevanceTag}"`);
+        skippedCount++;
+        progressCallback((index + 1) / data.length * 100);
+        continue;
+      }
 
       // Get domain from organization or fallback to website_url or other fields
       const domain = extractDomain(row.organization?.website_url ||

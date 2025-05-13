@@ -123,6 +123,14 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
       const index = i + j;
       const row = data[index];
 
+      // Skip processing if row is already tagged
+      if (row.relevanceTag) {
+        logCallback(`Skipping item ${index + 1}: Already tagged as "${row.relevanceTag}"`);
+        skippedCount++;
+        progressCallback((index + 1) / data.length * 100);
+        continue;
+      }
+
       // Create a promise for each item in the batch
       const processPromise = processSingleTitle(row, index, apiKey, model, logCallback)
         .then(result => {

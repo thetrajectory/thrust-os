@@ -90,6 +90,14 @@ export async function processIndianLeads(data, logCallback, progressCallback) {
       const index = i + j;
       const row = data[index];
 
+      // Skip processing if row is already tagged
+      if (row.relevanceTag) {
+        logCallback(`Skipping item ${index + 1}: Already tagged as "${row.relevanceTag}"`);
+        skippedCount++;
+        progressCallback((index + 1) / data.length * 100);
+        continue;
+      }
+      
       // Skip rows that don't meet criteria (must have organization ID and relevance score >= 3)
       const orgId = row.organization?.id || row['organization.id'];
       const companyName = row.organization?.name || row['organization.name'] || row.company;

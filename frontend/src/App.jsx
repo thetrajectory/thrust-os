@@ -219,7 +219,8 @@ const App = () => {
           path="/results"
           element={
             <ResultsPage
-              processedData={filteredData}
+              processedData={processedData}  // This should be all rows
+              filteredData={filteredData}    // This can be filtered rows for display purposes      
               originalCount={csvData?.length || 0}
               finalCount={filteredData?.length || 0}
               analytics={analytics}
