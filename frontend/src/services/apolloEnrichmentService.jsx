@@ -48,6 +48,24 @@ export async function processApolloEnrichment(data, logCallback, progressCallbac
   const untaggedData = data.filter(row => !row.relevanceTag);
   logCallback(`Processing ${untaggedData.length} untagged rows out of ${data.length} total rows.`);
 
+  // Safety check - if no untagged rows, return original data
+  if (untaggedData.length === 0) {
+    logCallback("No untagged rows to process in Apollo enrichment. Returning original data.");
+    return {
+      data: data,
+      analytics: {
+        supabaseHits: 0,
+        apolloFetches: 0,
+        skippedCount: 0,
+        errorCount: 0,
+        totalProcessed: 0,
+        startTime: startTimestamp,
+        endTime: Date.now(),
+        processingTimeSeconds: 0
+      }
+    };
+  }
+
   // Get API key and batch size from environment variables
   const apiKey = import.meta.env.VITE_REACT_APP_APOLLO_API_KEY;
   const batchSize = parseInt(import.meta.env.VITE_REACT_APP_APOLLO_BATCH_SIZE || "5");

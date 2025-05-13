@@ -443,8 +443,14 @@ class EnrichmentOrchestrator {
         }
 
         // Make sure we have data to process
-        if (stepId !== 'titleRelevance' && (!this.filteredData || this.filteredData.length === 0)) {
-          this.addLog(`Warning: No filtered data available for ${stepName}. Skipping step.`);
+        // Count untagged rows for this step
+        const untaggedRows = stepId === 'titleRelevance'
+          ? this.processedData  // For first step, process all rows
+          : this.processedData.filter(row => !row.relevanceTag);  // For subsequent steps, only process untagged rows
+
+        // Make sure we have data to process
+        if (untaggedRows.length === 0) {
+          this.addLog(`Warning: No untagged rows available for ${stepName}. Skipping step.`);
 
           // Mark step as complete but skipped
           this.stepStatus[stepId] = {
@@ -478,6 +484,9 @@ class EnrichmentOrchestrator {
 
           return true; // Continue to next step
         }
+
+        // Log the number of untagged rows to be processed
+        this.addLog(`Found ${untaggedRows.length} untagged rows to process in ${stepName}`);
 
         // Process the service step
         const processorResult = await this.processServiceStep(stepId);
@@ -927,17 +936,17 @@ class EnrichmentOrchestrator {
    */
   async runPipeline(initialData, callbacks = {}) {
     this.setInitialData(initialData);
-  
+
     if (callbacks) {
       this.setCallbacks(callbacks);
     }
-  
+
     let continueProcessing = true;
-  
+
     while (continueProcessing && !this.processingComplete && !this.error) {
       continueProcessing = await this.processCurrentStep();
     }
-  
+
     return {
       completed: this.processingComplete,
       error: this.error,
