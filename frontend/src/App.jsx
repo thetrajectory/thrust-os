@@ -22,7 +22,6 @@ const App = () => {
   const [csvFile, setCsvFile] = useState(null);
   const [csvData, setCsvData] = useState(null);
   const [processedData, setProcessedData] = useState(null);
-  const [filteredData, setFilteredData] = useState(null);
   const [analytics, setAnalytics] = useState({});
   const [filterAnalytics, setFilterAnalytics] = useState({});
 
@@ -64,7 +63,6 @@ const App = () => {
     } else {
       // For other clients, we'll just skip processing for now (placeholder for V2)
       setProcessedData(enrichedData);
-      setFilteredData(enrichedData);
       navigate('/results');
     }
 
@@ -72,15 +70,14 @@ const App = () => {
 
   const handleProcessingComplete = (filteredData) => {
     // Make sure we have data
-    if (filteredData && filteredData.length > 0) {
-      console.log(`Processing complete: ${filteredData.length} rows of filtered data`);
-      setFilteredData(filteredData);
-    } else {
-      // If no filtered data, use the processed data
-      console.warn("No filtered data received. Using all processed data.");
-      const orchestratorData = enrichmentOrchestrator.processedData || csvData;
-      setFilteredData(orchestratorData);
+    const orchestratorData = enrichmentOrchestrator.processedData || csvData || [];
+
+    if (!Array.isArray(orchestratorData)) {
+      console.error("Invalid processed data from orchestrator:", orchestratorData);
+      return;
     }
+
+    setProcessedData(orchestratorData);
 
     // Update analytics state from orchestrator
     setAnalytics(enrichmentOrchestrator.analytics || {});
@@ -121,7 +118,6 @@ const App = () => {
     setCsvFile(null);
     setCsvData(null);
     setProcessedData(null);
-    setFilteredData(null);
     setAnalytics({});
     setFilterAnalytics({});
 
@@ -134,7 +130,6 @@ const App = () => {
 
   const resetProcessing = () => {
     setProcessedData(null);
-    setFilteredData(null);
     setAnalytics({});
     setFilterAnalytics({});
     // Reset orchestrator

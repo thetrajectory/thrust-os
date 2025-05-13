@@ -569,10 +569,12 @@ class EnrichmentOrchestrator {
         this.processingComplete = true;
 
         // Make sure we have the final filtered data
-        if (this.filteredData.length === 0 && this.processedData.length > 0) {
-          // If no data was filtered (possibly due to filtering errors), use processed data
-          this.filteredData = this.processedData;
-          this.addLog('Warning: No data passed filtering criteria. Using all processed data.');
+        // Just log the count of untagged rows
+        if (this.processedData && Array.isArray(this.processedData)) {
+          const untaggedCount = this.processedData.filter(row => !row.relevanceTag).length;
+          this.addLog(`Processing complete: ${untaggedCount} rows remained untagged (passed all filters).`);
+        } else {
+          this.addLog('Warning: Processed data is not available or not an array.');
         }
 
         return false;
