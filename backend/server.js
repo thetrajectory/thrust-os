@@ -260,7 +260,9 @@ app.post('/api/serper/website', async (req, res) => {
       res.status(apiError.response?.status || 500).json({
         error: 'Error calling Serper API',
         details: apiError.response?.data || apiError.message,
-        url: url
+        url: url,
+        // Include a fallback text to help the client continue
+        fallbackText: "Unable to scrape website content. Please try again later."
       });
     }
   } catch (error) {

@@ -183,8 +183,8 @@ const ResultsPage = (props) => {
     // Construct enrichment state with all available data
     const enrichmentState = {
       processedData: storedProcessedData,
-      originalCount: originalCsvData.length || this.state.originalCount,
-      finalCount: storedFilteredData.length || this.state.finalCount,
+      originalCount: originalCsvData.length || originalCount,
+      finalCount: storedFilteredData.length || finalCount,
       analytics: storedAnalytics,
       filterAnalytics: storedFilterAnalytics,
       logs: storedLogs,

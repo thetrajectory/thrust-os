@@ -352,6 +352,10 @@ async function scrapeSingleDomain(
       // Handle JSON response
       scrapedText = response.text;
       creditsUsed = response.credits || 1;
+    } else if (response && response.fallbackText) {
+      // Handle fallback text from error
+      scrapedText = response.fallbackText;
+      logCallback(`Using fallback text for ${domain} due to scraping error`);
     } else if (response && typeof response === 'object') {
       // Fallback for unknown response format
       scrapedText = JSON.stringify(response);
