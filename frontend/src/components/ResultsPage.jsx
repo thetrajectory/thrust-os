@@ -135,7 +135,7 @@ const ResultsPage = (props) => {
   };
 
   const handleDownloadData = () => {
-    if (processedData && processedData.length > 0) {
+    if (filteredData && filteredData.length > 0) {
       const result = reportsService.downloadProcessedDataCsv(processedData);
       if (!result.success) {
         alert(`Error downloading data: ${result.error}`);
@@ -318,7 +318,7 @@ const ResultsPage = (props) => {
                 ))}
               </tbody>
             </table>
-            {processedData.length > 10 && (
+            {filteredData.length > 10 && (
               <p className="mt-2 text-sm text-gray-500">Showing 10 of {formatNumber(processedData.length)} leads</p>
             )}
           </div>
