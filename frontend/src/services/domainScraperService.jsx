@@ -42,13 +42,17 @@ function isDataStale(updatedAt, createdAt) {
 export async function scrapeDomain(data, logCallback, progressCallback) {
   logCallback("Starting Domain Scraping...");
 
-  logCallback(`Received ${data.length} data rows to process`);
+  // Only process untagged rows
+  const untaggedData = data.filter(row => !row.relevanceTag);
+  logCallback(`Processing ${untaggedData.length} untagged rows out of ${data.length} total rows.`);
+
+  logCallback(`Received ${untaggedData.length} untagged data rows to process`);
 
   const startTimestamp = Date.now()
 
   // Sample log a few rows to check the domain fields
-  if (data.length > 0) {
-    const sampleRow = data[0];
+  if (untaggedData.length > 0) {
+    const sampleRow = untaggedData[0];
     logCallback(`Sample row domain info: 
       - organization?.website_url: ${sampleRow.organization?.website_url || 'undefined'}
       - organization?.primary_domain: ${sampleRow.organization?.primary_domain || 'undefined'}
@@ -65,7 +69,14 @@ export async function scrapeDomain(data, logCallback, progressCallback) {
   }
 
   // Initialize result array with original data
-  const processedData = [...data];
+  const processedData = [...untaggedData];
+
+  // Create a map for quick lookup when merging back
+  const dataMap = new Map();
+  data.forEach(row => {
+    const key = row.linkedin_url || (row.organization && row.organization.id) || row.id;
+    if (key) dataMap.set(key, row);
+  });
 
   // Track analytics
   let supabaseHits = 0;
@@ -75,8 +86,8 @@ export async function scrapeDomain(data, logCallback, progressCallback) {
   let totalCreditsUsed = 0;
 
   // Process in batches
-  for (let i = 0; i < data.length; i += batchSize) {
-    const currentBatchSize = Math.min(batchSize, data.length - i);
+  for (let i = 0; i < untaggedData.length; i += batchSize) {
+    const currentBatchSize = Math.min(batchSize, untaggedData.length - i);
     logCallback(`Processing batch ${Math.floor(i / batchSize) + 1}: items ${i + 1} to ${i + currentBatchSize}`);
 
     // Process each item in the batch
@@ -84,15 +95,8 @@ export async function scrapeDomain(data, logCallback, progressCallback) {
 
     for (let j = 0; j < currentBatchSize; j++) {
       const index = i + j;
-      const row = data[index];
+      const row = untaggedData[index];
 
-      // Skip processing if row is already tagged
-      if (row.relevanceTag) {
-        logCallback(`Skipping item ${index + 1}: Already tagged as "${row.relevanceTag}"`);
-        skippedCount++;
-        progressCallback((index + 1) / data.length * 100);
-        continue;
-      }
 
       // Get domain from organization or fallback to website_url or other fields
       const domain = extractDomain(row.organization?.website_url ||
@@ -103,7 +107,7 @@ export async function scrapeDomain(data, logCallback, progressCallback) {
       if (!domain) {
         logCallback(`Skipping item ${index + 1}: No valid domain available`);
         skippedCount++;
-        progressCallback((index + 1) / data.length * 100);
+        progressCallback((index + 1) / untaggedData.length * 100);
         continue;
       }
 
@@ -135,7 +139,7 @@ export async function scrapeDomain(data, logCallback, progressCallback) {
           logCallback(`Processed domain ${domain}: ${result.source === 'supabase' ? 'Retrieved from Supabase' : 'Freshly scraped'}`);
 
           // Update progress
-          progressCallback((index + 1) / data.length * 100);
+          progressCallback((index + 1) / untaggedData.length * 100);
         })
         .catch(error => {
           logCallback(`Error processing domain ${domain}: ${error.message}`);
@@ -160,11 +164,27 @@ export async function scrapeDomain(data, logCallback, progressCallback) {
     await Promise.all(batchPromises);
 
     // Add a small delay between batches
-    if (i + currentBatchSize < data.length) {
+    if (i + currentBatchSize < untaggedData.length) {
       logCallback("Pausing briefly before next batch...");
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
   }
+
+  // Merge processed data back into original data array
+  const finalData = data.map(originalRow => {
+    const key = originalRow.linkedin_url || (originalRow.organization && originalRow.organization.id) || originalRow.id;
+    if (key && processedData.find(row =>
+      (row.linkedin_url === key) ||
+      (row.organization && row.organization.id === key) ||
+      (row.id === key))) {
+      const processedRow = processedData.find(row =>
+        (row.linkedin_url === key) ||
+        (row.organization && row.organization.id === key) ||
+        (row.id === key));
+      return { ...originalRow, ...processedRow };
+    }
+    return originalRow;
+  });
 
   const endTimestamp = Date.now();
   const processingTimeSeconds = (endTimestamp - startTimestamp) / 1000;
@@ -178,14 +198,14 @@ export async function scrapeDomain(data, logCallback, progressCallback) {
   logCallback(`- Total Serper credits used: ${totalCreditsUsed}`);
 
   return {
-    data: processedData,
+    data: finalData,
     analytics: {
       supabaseHits,
       scrapeSuccesses,
       skippedCount,
       errorCount,
       totalCreditsUsed,
-      totalProcessed: data.length - skippedCount,
+      totalProcessed: untaggedData.length - skippedCount,
       startTime: startTimestamp,
       endTime: endTimestamp,
       processingTimeSeconds: processingTimeSeconds

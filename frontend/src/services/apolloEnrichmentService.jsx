@@ -44,6 +44,10 @@ export async function processApolloEnrichment(data, logCallback, progressCallbac
 
   const startTimestamp = Date.now();
 
+  // Filter data to only process untagged rows
+  const untaggedData = data.filter(row => !row.relevanceTag);
+  logCallback(`Processing ${untaggedData.length} untagged rows out of ${data.length} total rows.`);
+
   // Get API key and batch size from environment variables
   const apiKey = import.meta.env.VITE_REACT_APP_APOLLO_API_KEY;
   const batchSize = parseInt(import.meta.env.VITE_REACT_APP_APOLLO_BATCH_SIZE || "5");
@@ -53,11 +57,16 @@ export async function processApolloEnrichment(data, logCallback, progressCallbac
     logCallback("⚠️ Apollo API key is not set. Using fallback data only.");
   }
 
-  // Store original data
+  // Store original data and create a map for easy lookup
   const originalData = [...data];
+  const dataMap = new Map();
+  data.forEach(row => {
+    const key = row.linkedin_url || (row.person && row.person.linkedin_url) || row.id;
+    if (key) dataMap.set(key, row);
+  });
 
   // Initialize result array with original data
-  const processedData = data.map(row => ({
+  const processedData = untaggedData.map(row => ({
     ...row,
     apolloLeadSource: 'unprocessed'
   }));
@@ -86,22 +95,15 @@ export async function processApolloEnrichment(data, logCallback, progressCallbac
   // Process in batches with smaller batch size if errors are occurring
   const effectiveBatchSize = errorCount > 0 ? Math.max(1, Math.floor(batchSize / 2)) : batchSize;
 
-  for (let i = 0; i < data.length; i += effectiveBatchSize) {
-    const currentBatchSize = Math.min(effectiveBatchSize, data.length - i);
+  for (let i = 0; i < untaggedData.length; i += effectiveBatchSize) {
+    const currentBatchSize = Math.min(effectiveBatchSize, untaggedData.length - i);
     logCallback(`Processing batch ${Math.floor(i / effectiveBatchSize) + 1}: items ${i + 1} to ${i + currentBatchSize}`);
 
     // Process each item in the batch sequentially to avoid rate limits
     for (let j = 0; j < currentBatchSize; j++) {
       const index = i + j;
-      const row = data[index];
+      const row = untaggedData[index];
 
-      // Skip processing if row is already tagged
-      if (row.relevanceTag) {
-        logCallback(`Skipping item ${index + 1}: Already tagged as "${row.relevanceTag}"`);
-        skippedCount++;
-        progressCallback((index + 1) / data.length * 100);
-        continue;
-      }
 
       // For irrelevant titles, we still process but we mark them as skipped
       const isIrrelevant = row.titleRelevance === 'Irrelevant';
@@ -159,7 +161,7 @@ export async function processApolloEnrichment(data, logCallback, progressCallbac
       }
 
       // Update progress
-      progressCallback((index + 1) / data.length * 100);
+      progressCallback((index + 1) / untaggedData.length * 100);
 
       // Short delay between individual item processing to avoid rate limits
       if (j < currentBatchSize - 1) {
@@ -168,7 +170,7 @@ export async function processApolloEnrichment(data, logCallback, progressCallbac
     }
 
     // Add a longer delay between batches
-    if (i + currentBatchSize < data.length) {
+    if (i + currentBatchSize < untaggedData.length) {
       logCallback("Pausing between batches to avoid rate limits...");
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
@@ -202,26 +204,24 @@ export async function processApolloEnrichment(data, logCallback, progressCallbac
     logCallback(`Successfully uploaded ${uploadCount} records to Supabase`);
   }
 
-  // Ensure all rows are included in final results
-  const allRows = [...originalData];
-
+  // Update original data with processed results
   // Create a map of processed data for quick lookup
   const processedMap = new Map();
   processedData.forEach(item => {
-    if (item.linkedin_url) {
-      processedMap.set(item.linkedin_url, item);
+    const key = item.linkedin_url || (item.person && item.person.linkedin_url) || item.id;
+    if (key) {
+      processedMap.set(key, item);
     }
   });
 
-  // Fill in final results with all original rows, plus enrichment where available
-  const finalData = allRows.map(originalRow => {
-    if (originalRow.linkedin_url && processedMap.has(originalRow.linkedin_url)) {
-      return processedMap.get(originalRow.linkedin_url);
+  // Merge processed data back into original data
+  const finalData = originalData.map(originalRow => {
+    const key = originalRow.linkedin_url || (originalRow.person && originalRow.person.linkedin_url) || originalRow.id;
+    if (key && processedMap.has(key)) {
+      return processedMap.get(key);
     } else {
-      // For items without processed data, add default fields
-      const row = { ...originalRow, apolloLeadSource: 'not_processed' };
-      addBasicFieldsForError(row);
-      return row;
+      // For items without processed data, keep the original
+      return originalRow;
     }
   });
 

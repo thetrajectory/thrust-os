@@ -110,6 +110,7 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
   let irrelevantCount = 0;
   let errorCount = 0;
   let tokensUsed = 0;
+  let skippedCount = 0;
 
   // Process in batches
   for (let i = 0; i < data.length; i += batchSize) {
@@ -123,7 +124,7 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
       const index = i + j;
       const row = data[index];
 
-      // Skip processing if row is already tagged
+      // Skip processing if row is already tagged - unlikely in title relevance step as it's the first step
       if (row.relevanceTag) {
         logCallback(`Skipping item ${index + 1}: Already tagged as "${row.relevanceTag}"`);
         skippedCount++;
@@ -197,6 +198,7 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
   logCallback(`- Founders: ${founderCount}`);
   logCallback(`- Relevant: ${relevantCount}`);
   logCallback(`- Irrelevant: ${irrelevantCount}`);
+  logCallback(`- Skipped: ${skippedCount}`);
   logCallback(`- Errors: ${errorCount}`);
   logCallback(`- Total tokens used: ${tokensUsed}`);
   logCallback(`- Processing Time: ${processingTimeSeconds.toFixed(2)} seconds`);
@@ -207,9 +209,10 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
       founderCount,
       relevantCount,
       irrelevantCount,
+      skippedCount,
       errorCount,
       tokensUsed,
-      totalProcessed: data.length,
+      totalProcessed: data.length - skippedCount,
       startTimes: startTimestamp,
       endTime: endTimestamp,
       processingTimeSeconds: processingTimeSeconds

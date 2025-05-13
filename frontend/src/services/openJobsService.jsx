@@ -41,6 +41,10 @@ function isDataStale(updatedAt, createdAt) {
 export async function scrapeOpenJobs(data, logCallback, progressCallback) {
   logCallback("Starting Open Jobs Scraping...");
 
+  // Only process untagged rows
+  const untaggedData = data.filter(row => !row.relevanceTag);
+  logCallback(`Processing ${untaggedData.length} untagged rows out of ${data.length} total rows.`);
+
   const startTimestamp = Date.now();
 
   // Get configuration from environment variables
@@ -53,7 +57,14 @@ export async function scrapeOpenJobs(data, logCallback, progressCallback) {
   }
 
   // Initialize result array with original data
-  const processedData = [...data];
+  const processedData = [...untaggedData];
+
+  // Create a map for quick lookup when merging back
+  const dataMap = new Map();
+  data.forEach(row => {
+    const key = row.linkedin_url || (row.organization && row.organization.id) || row.id;
+    if (key) dataMap.set(key, row);
+  });
 
   // Track analytics
   let supabaseHits = 0;
@@ -71,8 +82,8 @@ export async function scrapeOpenJobs(data, logCallback, progressCallback) {
   };
 
   // Process in batches
-  for (let i = 0; i < data.length; i += batchSize) {
-    const currentBatchSize = Math.min(batchSize, data.length - i);
+  for (let i = 0; i < untaggedData.length; i += batchSize) {
+    const currentBatchSize = Math.min(batchSize, untaggedData.length - i);
     logCallback(`Processing batch ${Math.floor(i / batchSize) + 1}: items ${i + 1} to ${i + currentBatchSize}`);
 
     // Process each item in the batch
@@ -80,21 +91,13 @@ export async function scrapeOpenJobs(data, logCallback, progressCallback) {
 
     for (let j = 0; j < currentBatchSize; j++) {
       const index = i + j;
-      const row = data[index];
-
-      // Skip processing if row is already tagged
-      if (row.relevanceTag) {
-        logCallback(`Skipping item ${index + 1}: Already tagged as "${row.relevanceTag}"`);
-        skippedCount++;
-        progressCallback((index + 1) / data.length * 100);
-        continue;
-      }
+      const row = untaggedData[index];
 
       // Skip rows with tags or low relevance
-      if (row.relevanceTag || (row.companyRelevanceScore || 0) < 3) {
+      if ((row.companyRelevanceScore || 0) < 3) {
         logCallback(`Skipping item ${index + 1}: ${row.relevanceTag ? `Tagged as "${row.relevanceTag}"` : 'Low relevance score'}`);
         skippedCount++;
-        progressCallback((index + 1) / data.length * 100);
+        progressCallback((index + 1) / untaggedData.length * 100);
         continue;
       }
 
@@ -143,7 +146,7 @@ export async function scrapeOpenJobs(data, logCallback, progressCallback) {
           logCallback(`Processed open jobs for ${companyName}: ${result.data.total_available_jobs} jobs (${result.source})`);
 
           // Update progress
-          progressCallback((index + 1) / data.length * 100);
+          progressCallback((index + 1) / untaggedData.length * 100);
         })
         .catch(error => {
           logCallback(`Error processing open jobs for ${linkedinUrl}: ${error.message}`);
@@ -168,11 +171,26 @@ export async function scrapeOpenJobs(data, logCallback, progressCallback) {
     await Promise.all(batchPromises);
 
     // Add a small delay between batches
-    if (i + currentBatchSize < data.length) {
+    if (i + currentBatchSize < untaggedData.length) {
       logCallback("Pausing briefly before next batch...");
       await new Promise(resolve => setTimeout(resolve, 1500));
     }
   }
+
+  // Merge processed data back into original data array
+  const finalData = data.map(originalRow => {
+    const key = originalRow.linkedin_url || (originalRow.organization && originalRow.organization.id) || originalRow.id;
+    if (key) {
+      const processedRow = processedData.find(row =>
+        (row.linkedin_url === key) ||
+        (row.organization && row.organization.id === key) ||
+        (row.id === key));
+      if (processedRow) {
+        return { ...originalRow, ...processedRow };
+      }
+    }
+    return originalRow;
+  });
 
   const endTimestamp = Date.now();
   const processingTimeSeconds = (endTimestamp - startTimestamp) / 1000;
@@ -190,7 +208,7 @@ export async function scrapeOpenJobs(data, logCallback, progressCallback) {
   logCallback(`- Not hiring (0 jobs): ${jobCounts.none}`);
 
   return {
-    data: processedData,
+    data: finalData,
     analytics: {
       supabaseHits,
       coresignalFetches,
@@ -198,7 +216,7 @@ export async function scrapeOpenJobs(data, logCallback, progressCallback) {
       errorCount,
       creditsUsed,
       jobCounts,
-      totalProcessed: data.length - skippedCount,
+      totalProcessed: untaggedData.length - skippedCount,
       startTime: startTimestamp,
       endTime: endTimestamp,
       processingTimeSeconds: processingTimeSeconds

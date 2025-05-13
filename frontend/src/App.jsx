@@ -220,10 +220,9 @@ const App = () => {
           element={
             <ResultsPage
               processedData={processedData}  // This should be all rows
-              filteredData={filteredData}    // This can be filtered rows for display purposes      
               originalCount={csvData?.length || 0}
-              finalCount={filteredData?.length || 0}
               analytics={analytics}
+              finalCount={processedData ? processedData.filter(row => !row.relevanceTag).length : 0}
               filterAnalytics={filterAnalytics}
               onBack={handleBackNavigation}
             />

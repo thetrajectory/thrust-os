@@ -43,6 +43,9 @@ function isDataStale(updatedAt, createdAt) {
 export async function processIndianLeads(data, logCallback, progressCallback) {
   logCallback("Starting Indian Presence Analysis...");
 
+  const untaggedData = data.filter(row => !row.relevanceTag);
+  logCallback(`Processing ${untaggedData.length} untagged rows out of ${data.length} total rows.`);
+
   const startTimestamp = Date.now();
 
   // Get configuration from environment variables
@@ -55,7 +58,14 @@ export async function processIndianLeads(data, logCallback, progressCallback) {
   }
 
   // Initialize result array with original data
-  const processedData = [...data];
+  const processedData = [...untaggedData];
+
+  // Create a map for quick lookup when merging back
+  const dataMap = new Map();
+  data.forEach(row => {
+    const key = row.linkedin_url || (row.organization && row.organization.id) || row.id;
+    if (key) dataMap.set(key, row);
+  });
 
   // Track analytics
   let supabaseHits = 0;
@@ -79,8 +89,8 @@ export async function processIndianLeads(data, logCallback, progressCallback) {
   }
 
   // Process in batches
-  for (let i = 0; i < data.length; i += batchSize) {
-    const currentBatchSize = Math.min(batchSize, data.length - i);
+  for (let i = 0; i < untaggedData.length; i += batchSize) {
+    const currentBatchSize = Math.min(batchSize, untaggedData.length - i);
     logCallback(`Processing batch ${Math.floor(i / batchSize) + 1}: items ${i + 1} to ${i + currentBatchSize}`);
 
     // Process each item in the batch
@@ -88,16 +98,8 @@ export async function processIndianLeads(data, logCallback, progressCallback) {
 
     for (let j = 0; j < currentBatchSize; j++) {
       const index = i + j;
-      const row = data[index];
+      const row = untaggedData[index];
 
-      // Skip processing if row is already tagged
-      if (row.relevanceTag) {
-        logCallback(`Skipping item ${index + 1}: Already tagged as "${row.relevanceTag}"`);
-        skippedCount++;
-        progressCallback((index + 1) / data.length * 100);
-        continue;
-      }
-      
       // Skip rows that don't meet criteria (must have organization ID and relevance score >= 3)
       const orgId = row.organization?.id || row['organization.id'];
       const companyName = row.organization?.name || row['organization.name'] || row.company;
@@ -106,7 +108,7 @@ export async function processIndianLeads(data, logCallback, progressCallback) {
       if (!orgId || (row.companyRelevanceScore || 0) < 3) {
         logCallback(`Skipping item ${index + 1}: ${!orgId ? 'No organization ID' : 'Low relevance score'}`);
         skippedCount++;
-        progressCallback((index + 1) / data.length * 100);
+        progressCallback((index + 1) / untaggedData.length * 100);
         continue;
       }
 
@@ -146,7 +148,7 @@ export async function processIndianLeads(data, logCallback, progressCallback) {
           logCallback(`Processed Indian presence for ${companyName}: ${result.data.headcount_for_india} employees (${result.data.percentage_headcount_for_india.toFixed(1)}%)`);
 
           // Update progress
-          progressCallback((index + 1) / data.length * 100);
+          progressCallback((index + 1) / untaggedData.length * 100);
         })
         .catch(error => {
           logCallback(`Error processing Indian presence for org ID ${orgId}: ${error.message}`);
@@ -172,14 +174,30 @@ export async function processIndianLeads(data, logCallback, progressCallback) {
     await Promise.all(batchPromises);
 
     // Add a small delay between batches
-    if (i + currentBatchSize < data.length) {
+    if (i + currentBatchSize < untaggedData.length) {
       logCallback("Pausing briefly before next batch...");
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
   }
 
+  // Merge processed data back into original data array
+  const finalData = data.map(originalRow => {
+    const key = originalRow.linkedin_url || (originalRow.organization && originalRow.organization.id) || originalRow.id;
+    if (key) {
+      const processedRow = processedData.find(row =>
+        (row.linkedin_url === key) ||
+        (row.organization && row.organization.id === key) ||
+        (row.id === key));
+      if (processedRow) {
+        return { ...originalRow, ...processedRow };
+      }
+    }
+    return originalRow;
+  });
+
+
   // Calculate presence distribution
-  const indianPresenceDistribution = countIndianPresenceDistribution(processedData, tooManyIndiansThreshold);
+  const indianPresenceDistribution = countIndianPresenceDistribution(finalData, tooManyIndiansThreshold);
 
   const endTimestamp = Date.now();
   const processingTimeSeconds = (endTimestamp - startTimestamp) / 1000;
@@ -197,7 +215,7 @@ export async function processIndianLeads(data, logCallback, progressCallback) {
   logCallback(`- No Indian Presence (0%): ${indianPresenceDistribution.none}`);
 
   return {
-    data: processedData,
+    data: finalData,
     analytics: {
       supabaseHits,
       apolloFetches,
@@ -206,7 +224,7 @@ export async function processIndianLeads(data, logCallback, progressCallback) {
       errorCount,
       creditsUsed,
       indianPresenceDistribution,
-      totalProcessed: data.length - skippedCount,
+      totalProcessed: untaggedData.length - skippedCount,
       startTime: startTimestamp,
       endTime: endTimestamp,
       processingTimeSeconds: processingTimeSeconds
@@ -315,7 +333,7 @@ async function processIndianPresence(
 
       logCallback(`Indian presence: ${indianPercentage.toFixed(2)}%`);
 
-      const apolloOrgJson = response? JSON.stringify(response) : null;
+      const apolloOrgJson = response ? JSON.stringify(response) : null;
 
       // STEP 3: Store data in Supabase if available
       if (supabaseAvailable) {

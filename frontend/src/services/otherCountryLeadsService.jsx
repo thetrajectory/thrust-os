@@ -51,6 +51,10 @@ export async function processOtherCountryLeads(
 ) {
   logCallback("Starting Other Country Presence Analysis...");
 
+  // Only process untagged rows
+  const untaggedData = data.filter(row => !row.relevanceTag);
+  logCallback(`Processing ${untaggedData.length} untagged rows out of ${data.length} total rows.`);
+
   const startTimestamp = Date.now();
 
   // Get configuration from environment variables
@@ -66,7 +70,14 @@ export async function processOtherCountryLeads(
   }
 
   // Initialize result array with original data
-  const processedData = [...data];
+  const processedData = [...untaggedData];
+
+  // Create a map for quick lookup when merging back
+  const dataMap = new Map();
+  data.forEach(row => {
+    const key = row.linkedin_url || (row.organization && row.organization.id) || row.id;
+    if (key) dataMap.set(key, row);
+  });
 
   // Track analytics
   let supabaseHits = 0;
@@ -89,8 +100,8 @@ export async function processOtherCountryLeads(
   }
 
   // Process in batches
-  for (let i = 0; i < data.length; i += batchSize) {
-    const currentBatchSize = Math.min(batchSize, data.length - i);
+  for (let i = 0; i < untaggedData.length; i += batchSize) {
+    const currentBatchSize = Math.min(batchSize, untaggedData.length - i);
     logCallback(
       `Processing batch ${Math.floor(i / batchSize) + 1}: items ${i + 1} to ${i + currentBatchSize
       }`
@@ -101,15 +112,7 @@ export async function processOtherCountryLeads(
 
     for (let j = 0; j < currentBatchSize; j++) {
       const index = i + j;
-      const row = data[index];
-
-      // Skip processing if row is already tagged
-      if (row.relevanceTag) {
-        logCallback(`Skipping item ${index + 1}: Already tagged as "${row.relevanceTag}"`);
-        skippedCount++;
-        progressCallback((index + 1) / data.length * 100);
-        continue;
-      }
+      const row = untaggedData[index];
 
       // Skip rows that already have "Too many Indians" tag, since we don't need to check other countries
       if (row.relevanceTag === "Too many Indians") {
@@ -117,7 +120,7 @@ export async function processOtherCountryLeads(
           `Skipping item ${index + 1}: Already tagged as 'Too many Indians'`
         );
         skippedCount++;
-        progressCallback(((index + 1) / data.length) * 100);
+        progressCallback(((index + 1) / untaggedData.length) * 100);
         continue;
       }
 
@@ -172,7 +175,7 @@ export async function processOtherCountryLeads(
           );
 
           // Update progress
-          progressCallback(((index + 1) / data.length) * 100);
+          progressCallback(((index + 1) / untaggedData.length) * 100);
         })
         .catch((error) => {
           logCallback(
@@ -199,14 +202,29 @@ export async function processOtherCountryLeads(
     await Promise.all(batchPromises);
 
     // Add a small delay between batches
-    if (i + currentBatchSize < data.length) {
+    if (i + currentBatchSize < untaggedData.length) {
       logCallback("Pausing briefly before next batch...");
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
 
+  // Merge processed data back into original data array
+  const finalData = data.map(originalRow => {
+    const key = originalRow.linkedin_url || (originalRow.organization && originalRow.organization.id) || originalRow.id;
+    if (key) {
+      const processedRow = processedData.find(row =>
+        (row.linkedin_url === key) ||
+        (row.organization && row.organization.id === key) ||
+        (row.id === key));
+      if (processedRow) {
+        return { ...originalRow, ...processedRow };
+      }
+    }
+    return originalRow;
+  });
+
   // Calculate distribution
-  const distribution = countOtherCountryHeadcountDistribution(processedData);
+  const distribution = countOtherCountryHeadcountDistribution(finalData);
 
   const endTimestamp = Date.now();
   const processingTimeSeconds = (endTimestamp - startTimestamp) / 1000;
@@ -223,7 +241,7 @@ export async function processOtherCountryLeads(
   logCallback(`- No Presence (0): ${distribution.none}`);
 
   return {
-    data: processedData,
+    data: finalData,
     analytics: {
       supabaseHits,
       apolloFetches,
@@ -231,7 +249,7 @@ export async function processOtherCountryLeads(
       errorCount,
       creditsUsed,
       distribution,
-      totalProcessed: data.length - skippedCount,
+      totalProcessed: untaggedData.length - skippedCount,
       startTime: startTimestamp,
       endTime: endTimestamp,
       processingTimeSeconds: processingTimeSeconds

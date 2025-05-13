@@ -103,6 +103,9 @@ const COMPANY_RELEVANCE_PROMPT = (companyDesc, websiteContent) => {
 export async function processCompanyRelevance(data, logCallback, progressCallback) {
   logCallback("Starting Company Relevance Analysis...");
 
+  const untaggedData = data.filter(row => !row.relevanceTag);
+  logCallback(`Processing ${untaggedData.length} untagged rows out of ${data.length} total rows.`);
+
   const startTimestamp = Date.now();
 
   // Get configuration from environment variables
@@ -116,7 +119,14 @@ export async function processCompanyRelevance(data, logCallback, progressCallbac
   }
 
   // Initialize result array with original data
-  const processedData = [...data];
+  const processedData = [...untaggedData];
+
+  // Create a map for quick lookup when merging back
+  const dataMap = new Map();
+  data.forEach(row => {
+    const key = row.linkedin_url || (row.organization && row.organization.id) || row.id;
+    if (key) dataMap.set(key, row);
+  });
 
   // Track analytics
   let tooSmallCount = 0;
@@ -134,8 +144,8 @@ export async function processCompanyRelevance(data, logCallback, progressCallbac
   let tokensUsed = 0;
 
   // Process in batches
-  for (let i = 0; i < data.length; i += batchSize) {
-    const currentBatchSize = Math.min(batchSize, data.length - i);
+  for (let i = 0; i < untaggedData.length; i += batchSize) {
+    const currentBatchSize = Math.min(batchSize, untaggedData.length - i);
     logCallback(`Processing batch ${Math.floor(i / batchSize) + 1}: items ${i + 1} to ${i + currentBatchSize}`);
 
     // Process each item in the batch
@@ -143,15 +153,8 @@ export async function processCompanyRelevance(data, logCallback, progressCallbac
 
     for (let j = 0; j < currentBatchSize; j++) {
       const index = i + j;
-      const row = data[index];
+      const row = untaggedData[index];
 
-      // Skip processing if row is already tagged
-      if (row.relevanceTag) {
-        logCallback(`Skipping item ${index + 1}: Already tagged as "${row.relevanceTag}"`);
-        skippedCount++;
-        progressCallback((index + 1) / data.length * 100);
-        continue;
-      }
 
       // Skip rows that are marked as irrelevant in title relevance step
       if (row.titleRelevance === 'Irrelevant') {
@@ -162,7 +165,7 @@ export async function processCompanyRelevance(data, logCallback, progressCallbac
           companyRelevanceScore: 0
         };
         skippedCount++;
-        progressCallback((index + 1) / data.length * 100);
+        progressCallback((index + 1) / untaggedData.length * 100);
         continue;
       }
 
@@ -214,7 +217,7 @@ export async function processCompanyRelevance(data, logCallback, progressCallbac
           logCallback(`Processed item ${result.index + 1}: Company relevance score ${result.data.companyRelevanceScore}/5`);
 
           // Update progress
-          progressCallback((index + 1) / data.length * 100);
+          progressCallback((index + 1) / untaggedData.length * 100);
         })
         .catch(error => {
           logCallback(`Error processing item ${index + 1}: ${error.message}`);
@@ -229,7 +232,7 @@ export async function processCompanyRelevance(data, logCallback, progressCallbac
           };
 
           // Update progress even on error
-          progressCallback((index + 1) / data.length * 100);
+          progressCallback((index + 1) / untaggedData.length * 100);
         });
 
       batchPromises.push(processPromise);
@@ -239,11 +242,26 @@ export async function processCompanyRelevance(data, logCallback, progressCallbac
     await Promise.all(batchPromises);
 
     // Add a small delay between batches
-    if (i + currentBatchSize < data.length) {
+    if (i + currentBatchSize < untaggedData.length) {
       logCallback("Pausing briefly before next batch...");
       await new Promise(resolve => setTimeout(resolve, 500));
     }
   }
+
+  // Merge processed data back into original data array
+  const finalData = data.map(originalRow => {
+    const key = originalRow.linkedin_url || (originalRow.organization && originalRow.organization.id) || originalRow.id;
+    if (key) {
+      const processedRow = processedData.find(row =>
+        (row.linkedin_url === key) ||
+        (row.organization && row.organization.id === key) ||
+        (row.id === key));
+      if (processedRow) {
+        return { ...originalRow, ...processedRow };
+      }
+    }
+    return originalRow;
+  });
 
   // Calculate high relevance (scores 3-5)
   const highRelevance = relevanceScores[3] + relevanceScores[4] + relevanceScores[5];
@@ -261,7 +279,7 @@ export async function processCompanyRelevance(data, logCallback, progressCallbac
   logCallback(`- Errors: ${errorCount}`);
 
   return {
-    data: processedData,
+    data: finalData,
     analytics: {
       highRelevance,
       lowRelevance: relevanceScores[1] + relevanceScores[2],
@@ -270,7 +288,7 @@ export async function processCompanyRelevance(data, logCallback, progressCallbac
       skippedCount,
       errorCount,
       relevanceScores,
-      totalProcessed: data.length - skippedCount - tooSmallCount - tooLargeCount,
+      totalProcessed: untaggedData.length - skippedCount - tooSmallCount - tooLargeCount,
       startTime: startTimestamp,
       endTime: endTimestamp,
       processingTimeSeconds: processingTimeSeconds

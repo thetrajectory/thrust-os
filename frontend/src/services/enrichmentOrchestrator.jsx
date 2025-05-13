@@ -55,7 +55,7 @@ class EnrichmentOrchestrator {
    */
   reset() {
     this.processedData = null;
-    this.filteredData = null; // Track data after each filtering step
+    // Remove filteredData - we'll use tags instead
     this.currentStepIndex = 0;
     this.isProcessing = false;
     this.isCancelling = false;
@@ -64,7 +64,7 @@ class EnrichmentOrchestrator {
     this.logs = [];
     this.progress = 0;
     this.analytics = {};
-    this.filterAnalytics = {}; // Track filtering analytics
+    this.filterAnalytics = {}; // Keep this for statistics
     this.stepStatus = {};
 
     // Initialize step status
@@ -82,7 +82,6 @@ class EnrichmentOrchestrator {
    * @param {Array} data - Initial data to process
    */
   setInitialData(data) {
-
     // Clear session storage of previous data first
     storageUtils.removeFromStorage(storageUtils.STORAGE_KEYS.PROCESSED);
     storageUtils.removeFromStorage(storageUtils.STORAGE_KEYS.FILTERED);
@@ -93,8 +92,13 @@ class EnrichmentOrchestrator {
     storageUtils.removeFromStorage(storageUtils.STORAGE_KEYS.CURRENT_STEP);
 
     this.reset();
-    this.processedData = [...data];
-    this.filteredData = [...data];
+
+    // Initialize or ensure all rows have an empty relevanceTag
+    this.processedData = data.map(row => ({
+      ...row,
+      relevanceTag: row.relevanceTag || ''
+    }));
+
     this.addLog('Initialized with ' + data.length + ' records.');
   }
 
@@ -583,7 +587,7 @@ class EnrichmentOrchestrator {
         case 'indianLeads':
           processorFunction = indianLeadsService.processIndianLeads;
           break;
-        case 'otherCountryLeads': // New case
+        case 'otherCountryLeads':
           processorFunction = otherCountryLeadsService.processOtherCountryLeads;
           break;
         case 'openJobs':
@@ -600,10 +604,11 @@ class EnrichmentOrchestrator {
       // Define the data to process
       let dataToProcess;
       if (stepId === 'titleRelevance') {
+        // For first step, process all data
         dataToProcess = this.processedData;
       } else {
-        // For steps after title relevance, use filtered data if available, otherwise use processed data
-        dataToProcess = (this.filteredData && this.filteredData.length > 0) ? this.filteredData : this.processedData;
+        // For all other steps, only process untagged rows
+        dataToProcess = this.processedData.filter(row => !row.relevanceTag);
       }
 
       // Check if data is available
@@ -619,37 +624,10 @@ class EnrichmentOrchestrator {
         };
       }
 
-      // Add diagnostic log before domain scraping
+      // Special pre-processing for domain scraping
       if (stepId === 'domainScraping') {
-        let domainStats = {
-          totalRows: dataToProcess.length,
-          withWebsiteUrl: 0,
-          withPrimaryDomain: 0,
-          withWebsite: 0,
-          withoutDomain: 0
-        };
-
-        dataToProcess.forEach(row => {
-          if (row.organization?.website_url) domainStats.withWebsiteUrl++;
-          if (row.organization?.primary_domain) domainStats.withPrimaryDomain++;
-          if (row.website) domainStats.withWebsite++;
-          if (!row.organization?.website_url && !row.organization?.primary_domain && !row.website) {
-            domainStats.withoutDomain++;
-          }
-        });
-
-        this.addLog(`Domain statistics before scraping: ${JSON.stringify(domainStats)}`);
-
-        // Log first 3 rows for debugging
-        for (let i = 0; i < Math.min(3, dataToProcess.length); i++) {
-          const row = dataToProcess[i];
-          this.addLog(`Sample row ${i + 1} domain info:
-            - Company: ${row.company || row.organization?.name || 'Unknown'}
-            - organization?.website_url: ${row.organization?.website_url || 'undefined'}
-            - organization?.primary_domain: ${row.organization?.primary_domain || 'undefined'}
-            - website: ${row.website || 'undefined'}
-          `);
-        }
+        // Normalize data structure before domain scraping
+        dataToProcess = this.normalizeDataStructure(dataToProcess);
       }
 
       // Create wrapped callback functions to ensure 'this' context
@@ -663,8 +641,27 @@ class EnrichmentOrchestrator {
         progressCallback
       );
 
-      // Update processed data with full result
-      this.processedData = result.data;
+      // Update processed data with result
+      // First, create a map of the processed data by some unique identifier
+      const processedMap = new Map();
+      result.data.forEach(row => {
+        // Use linkedin_url as a unique ID if available, otherwise fall back to index
+        const id = row.linkedin_url || row.person?.linkedin_url || row.id;
+        if (id) {
+          processedMap.set(id, row);
+        }
+      });
+
+      // Now update the original processedData array
+      this.processedData = this.processedData.map(row => {
+        const rowId = row.linkedin_url || row.person?.linkedin_url || row.id;
+        if (rowId && processedMap.has(rowId)) {
+          // Return the processed row from the result
+          return processedMap.get(rowId);
+        }
+        // Return the original row if not processed
+        return row;
+      });
 
       // Store analytics
       this.analytics[stepId] = result.analytics;
@@ -711,18 +708,19 @@ class EnrichmentOrchestrator {
     this.addLog(`Applying headcount filter (10-1500 employees)...`);
 
     // Keep track of original count
-    const originalCount = this.filteredData.length;
-    let filteredCount = 0;
+    const originalCount = this.processedData.length;
+    let untaggedCount = 0;
     let tooSmallCount = 0;
     let tooLargeCount = 0;
     let noDataCount = 0;
 
-    // Create a copy of filtered data for filtering
-    const previousData = [...this.filteredData];
+    // Apply tags to the processed data based on headcount
+    this.processedData = this.processedData.map(row => {
+      // Skip if already tagged
+      if (row.relevanceTag) {
+        return row;
+      }
 
-    // Filter data based on headcount
-    // Store all data in processedData, but only filter for headcount in filteredData
-    this.filteredData = previousData.filter(row => {
       // Get employee count from multiple possible sources
       const employeeCount =
         row.organization?.estimated_num_employees ||
@@ -736,53 +734,38 @@ class EnrichmentOrchestrator {
 
         if (!isNaN(count)) {
           if (count < 10) {
-            // Add tag for too small companies - New code
-            row.relevanceTag = row.relevanceTag || `Too Small: ${count} employees`;
-            tooSmallCount++;
-            return false;
+            // Add tag for too small companies
+            return {
+              ...row,
+              relevanceTag: `Too Small: ${count} employees`
+            };
           }
           if (count > 1500) {
-            // Add tag for too large companies - New code
-            row.relevanceTag = row.relevanceTag || `Too Large: ${count} employees`;
-            tooLargeCount++;
-            return false;
+            // Add tag for too large companies
+            return {
+              ...row,
+              relevanceTag: `Too Large: ${count} employees`
+            };
           }
-          filteredCount++;
-          return true;
+          // Within range, no tag
+          untaggedCount++;
+          return row;
         }
       }
 
-      // If no employee count, add to no data count but keep it for now
+      // If no employee count, keep but count as no data
       noDataCount++;
-      return true;
-    });
-
-    // Apply the same tags to processedData - New code
-    this.processedData = this.processedData.map(row => {
-      const employeeCount =
-        row.organization?.estimated_num_employees ||
-        row['organization.estimated_num_employees'] ||
-        row.employees;
-
-      if (employeeCount) {
-        const normalizedCount = String(employeeCount).replace(/[^\d]/g, '');
-        const count = parseInt(normalizedCount);
-
-        if (!isNaN(count)) {
-          if (count < 10) {
-            row.relevanceTag = row.relevanceTag || `Too Small: ${count} employees`;
-          } else if (count > 1500) {
-            row.relevanceTag = row.relevanceTag || `Too Large: ${count} employees`;
-          }
-        }
-      }
       return row;
     });
+
+    // Count the number of tagged rows
+    tooSmallCount = this.processedData.filter(row => row.relevanceTag && row.relevanceTag.includes('Too Small')).length;
+    tooLargeCount = this.processedData.filter(row => row.relevanceTag && row.relevanceTag.includes('Too Large')).length;
 
     // Store filter analytics
     const filterAnalytics = {
       originalCount,
-      filteredCount,
+      untaggedCount,
       tooSmallCount,
       tooLargeCount,
       noDataCount
@@ -793,7 +776,7 @@ class EnrichmentOrchestrator {
     // Update step status
     this.stepStatus.headcountFilter = {
       status: 'complete',
-      message: `Filtered ${tooSmallCount + tooLargeCount} records based on headcount`,
+      message: `Tagged ${tooSmallCount + tooLargeCount} records based on headcount`,
       analytics: filterAnalytics
     };
 
@@ -802,141 +785,118 @@ class EnrichmentOrchestrator {
       this.statusCallback(this.stepStatus);
     }
 
-    this.addLog(`Headcount filtering complete: ${filteredCount} records passed, ${tooSmallCount} too small, ${tooLargeCount} too large, ${noDataCount} with no data.`);
+    this.addLog(`Headcount filtering complete: ${untaggedCount} records untagged, ${tooSmallCount} too small, ${tooLargeCount} too large, ${noDataCount} with no data.`);
   }
 
   async applyStepSpecificFiltering(stepId, data) {
     // Original count before filtering
     const originalCount = data.length;
-    let filteredCount = 0;
+    let untaggedCount = 0;
+    let taggedCount = 0;
     let filterReason = {};
 
-    // Track which rows need further processing (those without tags)
-    const rowsForProcessing = [...data];
+    this.addLog(`Applying tag-based filtering for step: ${stepId}...`);
 
     switch (stepId) {
       case 'titleRelevance':
-        // For each row, check if it should be tagged
-        this.addLog(`Checking title relevance for ${data.length} rows...`);
+        // Add tags for irrelevant titles
+        this.processedData = this.processedData.map(row => {
+          // Skip if already tagged
+          if (row.relevanceTag) {
+            return row;
+          }
 
-        // Process every row but tag the ones that don't meet criteria
-        rowsForProcessing.forEach(row => {
           if (row.titleRelevance === 'Founder' || row.titleRelevance === 'Relevant') {
-            filteredCount++;
-            // Keep this row untagged so it will be processed further
+            untaggedCount++;
+            return row; // No tag
           } else {
             // Apply tag for filtered-out rows 
-            row.relevanceTag = row.relevanceTag || `Irrelevant Title: ${row.titleRelevance || 'Unknown'}`;
-
-            // Track reason for filtering
+            taggedCount++;
             filterReason[row.titleRelevance || 'Unknown'] =
               (filterReason[row.titleRelevance || 'Unknown'] || 0) + 1;
+
+            return {
+              ...row,
+              relevanceTag: `Irrelevant Title: ${row.titleRelevance || 'Unknown'}`
+            };
           }
         });
 
-        this.addLog(`Title relevance filtering: ${filteredCount} rows passed (Founder/Relevant), ${originalCount - filteredCount} tagged with "Irrelevant".`);
-        break;
-
-      case 'headcountFilter':
-        // Employee count filtering
-        this.addLog(`Checking headcount for ${data.length} rows...`);
-
-        rowsForProcessing.forEach(row => {
-          // Skip already tagged rows
-          if (row.relevanceTag) return;
-
-          const employeeCount =
-            row.organization?.estimated_num_employees ||
-            row['organization.estimated_num_employees'] ||
-            row.employees;
-
-          if (employeeCount) {
-            const normalizedCount = String(employeeCount).replace(/[^\d]/g, '');
-            const count = parseInt(normalizedCount);
-
-            if (!isNaN(count)) {
-              if (count < 10) {
-                // Tag for too small companies
-                row.relevanceTag = `Too Small: ${count} employees`;
-                filterReason['Too Small'] = (filterReason['Too Small'] || 0) + 1;
-              } else if (count > 1500) {
-                // Tag for too large companies
-                row.relevanceTag = `Too Large: ${count} employees`;
-                filterReason['Too Large'] = (filterReason['Too Large'] || 0) + 1;
-              } else {
-                filteredCount++;
-                // Keep untagged for further processing
-              }
-            }
-          }
-        });
-
-        this.addLog(`Headcount filtering: ${filteredCount} rows passed, ${originalCount - filteredCount} tagged with size issues.`);
+        this.addLog(`Title relevance filtering: ${untaggedCount} rows untagged (Founder/Relevant), ${taggedCount} tagged with "Irrelevant".`);
         break;
 
       case 'companyRelevance':
         // Company relevance score filtering
-        this.addLog(`Checking company relevance scores for ${data.length} rows...`);
-
-        rowsForProcessing.forEach(row => {
-          // Skip already tagged rows
-          if (row.relevanceTag) return;
+        this.processedData = this.processedData.map(row => {
+          // Skip if already tagged
+          if (row.relevanceTag) {
+            return row;
+          }
 
           const score = row.companyRelevanceScore || 0;
 
           if (score >= 3) {
-            filteredCount++;
-            // Keep untagged for further processing
+            untaggedCount++;
+            return row; // No tag
           } else {
             // Tag for low relevance
-            row.relevanceTag = row.relevanceTag || `Low Company Relevance: Score ${score}/5`;
-
-            // Track reason for filtering
+            taggedCount++;
             filterReason[`Score: ${score}`] = (filterReason[`Score: ${score}`] || 0) + 1;
+
+            return {
+              ...row,
+              relevanceTag: `Low Company Relevance: Score ${score}/5`
+            };
           }
         });
 
-        this.addLog(`Company relevance filtering: ${filteredCount} rows passed (Score 3+), ${originalCount - filteredCount} tagged with low relevance.`);
+        this.addLog(`Company relevance filtering: ${untaggedCount} rows untagged (Score 3+), ${taggedCount} tagged with low relevance.`);
         break;
 
       case 'indianLeads':
         // Indian headcount percentage filtering
         const tooManyIndiansThreshold = parseInt(import.meta.env.VITE_REACT_APP_TOO_MANY_INDIANS_THRESHOLD || "20");
-        this.addLog(`Checking Indian headcount percentage (keeping <${tooManyIndiansThreshold}%)...`);
 
-        rowsForProcessing.forEach(row => {
-          // Skip already tagged rows
-          if (row.relevanceTag) return;
+        this.processedData = this.processedData.map(row => {
+          // Skip if already tagged
+          if (row.relevanceTag) {
+            return row;
+          }
 
           const percentage = row.percentage_headcount_for_india || 0;
 
           if (percentage < tooManyIndiansThreshold) {
-            filteredCount++;
-            // Keep untagged for further processing
+            untaggedCount++;
+            return row; // No tag
           } else {
             // Tag for too many Indians
-            row.relevanceTag = row.relevanceTag || `Too Many Indians: ${Math.round(percentage)}%`;
-
-            // Track reason for filtering
+            taggedCount++;
             filterReason[`Indian headcount ≥${tooManyIndiansThreshold}%`] =
               (filterReason[`Indian headcount ≥${tooManyIndiansThreshold}%`] || 0) + 1;
+
+            return {
+              ...row,
+              relevanceTag: `Too Many Indians: ${Math.round(percentage)}%`
+            };
           }
         });
 
-        this.addLog(`Indian headcount filtering: ${filteredCount} rows passed (<${tooManyIndiansThreshold}%), ${originalCount - filteredCount} tagged with high Indian %.`);
+        this.addLog(`Indian headcount filtering: ${untaggedCount} rows untagged (<${tooManyIndiansThreshold}%), ${taggedCount} tagged with high Indian %.`);
         break;
 
       default:
-        // For other steps, don't filter, just pass through
-        filteredCount = rowsForProcessing.length;
-        this.addLog(`No filtering applied for step: ${stepId}`);
+        // For other steps, don't apply tags
+        untaggedCount = this.processedData.filter(row => !row.relevanceTag).length;
+        taggedCount = this.processedData.filter(row => row.relevanceTag).length;
+        this.addLog(`No tag filtering applied for step: ${stepId}`);
     }
 
     // Update analytics with filtering info
     if (this.analytics[stepId]) {
       this.analytics[stepId].filtering = {
         originalCount,
-        filteredCount,
+        untaggedCount,
+        taggedCount,
         filterReason
       };
 
@@ -948,10 +908,6 @@ class EnrichmentOrchestrator {
         this.statusCallback(this.stepStatus);
       }
     }
-
-    // IMPORTANT: Don't filter out rows! Just update to make sure tags are persistent
-    this.processedData = data;
-    this.filteredData = data.filter(row => !row.relevanceTag);
   }
 
   /**
@@ -959,7 +915,8 @@ class EnrichmentOrchestrator {
    * @returns {Array} - Final filtered data
    */
   getFinalFilteredData() {
-    return this.filteredData || this.processedData || [];
+    // Return all data, both tagged and untagged
+    return this.processedData || [];
   }
 
   /**
@@ -970,22 +927,21 @@ class EnrichmentOrchestrator {
    */
   async runPipeline(initialData, callbacks = {}) {
     this.setInitialData(initialData);
-
+  
     if (callbacks) {
       this.setCallbacks(callbacks);
     }
-
+  
     let continueProcessing = true;
-
+  
     while (continueProcessing && !this.processingComplete && !this.error) {
       continueProcessing = await this.processCurrentStep();
     }
-
+  
     return {
       completed: this.processingComplete,
       error: this.error,
       data: this.processedData,
-      filteredData: this.filteredData,
       analytics: this.analytics,
       filterAnalytics: this.filterAnalytics
     };

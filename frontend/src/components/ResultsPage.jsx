@@ -67,27 +67,27 @@ const ResultsPage = (props) => {
   // Use useMemo to prevent recreating this object on every render
   const chartData = useMemo(() => {
     return {
-      labels: ['Founders', 'Relevant', 'Irrelevant', 'Filtered Out'],
+      labels: ['Founders', 'Relevant', 'Tagged (Filtered Out)', 'Irrelevant'],
       datasets: [
         {
           label: 'Leads Distribution',
           data: [
             stats.foundersCount,
             stats.relevantCount,
-            stats.irrelevantCount,
-            stats.totalLeads - stats.finalCount
+            stats.taggedCount,
+            stats.irrelevantCount
           ],
           backgroundColor: [
             'rgba(54, 162, 235, 0.6)',
             'rgba(75, 192, 192, 0.6)',
-            'rgba(255, 99, 132, 0.6)',
-            'rgba(201, 203, 207, 0.6)'
+            'rgba(201, 203, 207, 0.6)',
+            'rgba(255, 99, 132, 0.6)'
           ],
           borderColor: [
             'rgb(54, 162, 235)',
             'rgb(75, 192, 192)',
-            'rgb(255, 99, 132)',
-            'rgb(201, 203, 207)'
+            'rgb(201, 203, 207)',
+            'rgb(255, 99, 132)'
           ],
           borderWidth: 1,
         },
@@ -99,17 +99,21 @@ const ResultsPage = (props) => {
   useEffect(() => {
     if (!processedData || processedData.length === 0) return;
 
-    // Calculate statistics from processed data
-    const foundersCount = processedData.filter(row => row.titleRelevance === 'Founder').length;
-    const relevantCount = processedData.filter(row => row.titleRelevance === 'Relevant').length;
-    const irrelevantCount = processedData.filter(row => row.titleRelevance === 'Irrelevant' || !row.titleRelevance).length;
+    // Calculate statistics from processed data using tags
+    const foundersCount = processedData.filter(row => row.titleRelevance === 'Founder' && !row.relevanceTag).length;
+    const relevantCount = processedData.filter(row => row.titleRelevance === 'Relevant' && !row.relevanceTag).length;
+    const irrelevantCount = processedData.filter(row => row.titleRelevance === 'Irrelevant' || row.relevanceTag?.includes('Irrelevant')).length;
+    const taggedCount = processedData.filter(row => row.relevanceTag).length;
+    const untaggedCount = processedData.filter(row => !row.relevanceTag).length;
 
     setStats({
       totalLeads: originalCount || processedData.length,
       foundersCount,
       relevantCount,
       irrelevantCount,
-      finalCount: finalCount || processedData.length
+      finalCount: untaggedCount,
+      taggedCount,
+      untaggedCount
     });
 
     // Calculate analytics if not already loaded
@@ -136,18 +140,12 @@ const ResultsPage = (props) => {
   };
 
   const handleDownloadData = () => {
-    // Try multiple sources of data in order of preference
+    // Use all processed data for download
     let dataToDownload = processedData;
 
-    // If filteredData isn't available, try loading directly from storage
+    // If not available, try loading directly from storage
     if (!dataToDownload || dataToDownload.length === 0) {
-      dataToDownload = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.FILTERED);
-      console.log("Loaded from FILTERED storage:", dataToDownload);
-    }
-
-    // If still not available, try processed data
-    if (!dataToDownload || dataToDownload.length === 0) {
-      dataToDownload = processedData || storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.PROCESSED);
+      dataToDownload = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.PROCESSED);
       console.log("Loaded from PROCESSED storage:", dataToDownload);
     }
 
@@ -311,7 +309,7 @@ const ResultsPage = (props) => {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {processedData.slice(0, 10).map((row, idx) => (
-                  <tr key={idx}>
+                  <tr key={idx} className={row.relevanceTag ? "bg-gray-100" : ""}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {row.first_name || row.person?.first_name || ''} {row.last_name || row.person?.last_name || ''}
                     </td>
@@ -332,7 +330,7 @@ const ResultsPage = (props) => {
                         </span>
                       ) : (
                         <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                          Passed
+                          Qualified
                         </span>
                       )}
                     </td>

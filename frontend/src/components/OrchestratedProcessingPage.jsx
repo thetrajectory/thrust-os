@@ -480,10 +480,6 @@ const OrchestratedProcessingPage = () => {
     // Save processed data
     storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.PROCESSED, allData);
 
-    // CHANGE: Still save filtered for those who want filtered view, but use processedData for downloads
-    const filteredData = enrichmentOrchestrator.filteredData || allData;
-    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.FILTERED, filteredData);
-
     // Add termination analytics if cancelled
     if (isCancelling) {
       const terminationAnalytics = {
@@ -695,6 +691,9 @@ const OrchestratedProcessingPage = () => {
                         </td>
                         <td className="px-3 py-2 text-sm text-gray-800">
                           {row.titleRelevance || 'Pending'}
+                        </td>
+                        <td className="px-3 py-2 text-sm text-gray-800">
+                          {row.relevanceTag || 'None'}
                         </td>
                       </tr>
                     ))}
