@@ -245,7 +245,6 @@ class ReportsService {
     const pipeline = [
       'titleRelevance',
       'apolloEnrichment',
-      'headcountFilter',
       'domainScraping',
       'companyRelevance',
       'indianLeads',
@@ -259,7 +258,7 @@ class ReportsService {
       'apolloEnrichment': 'Apollo Lead Enricher',
       'domainScraping': 'Homepage and Sitemap Scrape',
       'companyRelevance': 'Company Relevance',
-      'indianLeads': 'Org Enricher',
+      'indianLeads': 'Fetch Indian Leads',
       'otherCountryLeads': 'Other Country Analysis',
       'openJobs': 'Open Job Scrape'
     };
@@ -268,7 +267,6 @@ class ReportsService {
     const apiSourceMap = {
       'titleRelevance': 'GPT',
       'apolloEnrichment': 'Apollo',
-      'headcountFilter': 'N/A',
       'domainScraping': 'Serper',
       'companyRelevance': 'GPT',
       'indianLeads': 'Apollo',
