@@ -484,11 +484,6 @@ const OrchestratedProcessingPage = () => {
     const filteredData = enrichmentOrchestrator.filteredData || allData;
     storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.FILTERED, filteredData);
 
-    // Pass THE FULL DATA to results page
-    if (props.onProcessingComplete) {
-      props.onProcessingComplete(allData, filteredData);
-    }
-
     // Add termination analytics if cancelled
     if (isCancelling) {
       const terminationAnalytics = {

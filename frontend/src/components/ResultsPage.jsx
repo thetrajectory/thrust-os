@@ -137,7 +137,7 @@ const ResultsPage = (props) => {
 
   const handleDownloadData = () => {
     // Try multiple sources of data in order of preference
-    let dataToDownload = filteredData;
+    let dataToDownload = processedData;
 
     // If filteredData isn't available, try loading directly from storage
     if (!dataToDownload || dataToDownload.length === 0) {
