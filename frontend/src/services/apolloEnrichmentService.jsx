@@ -272,6 +272,8 @@ async function upsertToSupabase(linkedinUrl, personId, data, fullName) {
 
     const companyName = data.company || data.organization?.name || data.person?.organization?.name;
     const position = data.position || data.person?.title;
+    // Extract connected_on from data
+    const connectedOn = data.connected_on || new Date().toISOString().split('T')[0];
 
     if (existingRecord) {
       // Update existing record
@@ -280,6 +282,7 @@ async function upsertToSupabase(linkedinUrl, personId, data, fullName) {
         .update({
           apollo_person_id: personId,
           apollo_json: apolloJsonString,
+          connected_on: connectedOn, // Save connected_on field
           updated_at: now
         })
         .eq('apollo_person_id', existingRecord.id);
@@ -297,6 +300,7 @@ async function upsertToSupabase(linkedinUrl, personId, data, fullName) {
           position: position,
           apollo_person_id: personId,
           apollo_json: apolloJsonString,
+          connected_on: connectedOn, // Save connected_on field
           created_at: now
         });
 

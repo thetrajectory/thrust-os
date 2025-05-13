@@ -1,6 +1,7 @@
 // services/enrichmentOrchestrator.js
 // Import individual services
 import apiClient from '../utils/apiClient';
+import storageUtils from '../utils/storageUtils';
 import apolloEnrichmentService from './apolloEnrichmentService';
 import companyRelevanceService from './companyRelevanceService';
 import domainScraperService from './domainScraperService';
@@ -8,7 +9,6 @@ import indianLeadsService from './indianLeadsService';
 import openJobsService from './openJobsService';
 import otherCountryLeadsService from './otherCountryLeadsService';
 import titleRelevanceService from './titleRelevanceService';
-import storageUtils from '../utils/storageUtils';
 
 /**
  * Orchestrates the entire lead enrichment pipeline
@@ -82,6 +82,16 @@ class EnrichmentOrchestrator {
    * @param {Array} data - Initial data to process
    */
   setInitialData(data) {
+
+    // Clear session storage of previous data first
+    storageUtils.removeFromStorage(storageUtils.STORAGE_KEYS.PROCESSED);
+    storageUtils.removeFromStorage(storageUtils.STORAGE_KEYS.FILTERED);
+    storageUtils.removeFromStorage(storageUtils.STORAGE_KEYS.LOGS);
+    storageUtils.removeFromStorage(storageUtils.STORAGE_KEYS.ANALYTICS);
+    storageUtils.removeFromStorage(storageUtils.STORAGE_KEYS.FILTER_ANALYTICS);
+    storageUtils.removeFromStorage(storageUtils.STORAGE_KEYS.PROCESS_STATUS);
+    storageUtils.removeFromStorage(storageUtils.STORAGE_KEYS.CURRENT_STEP);
+
     this.reset();
     this.processedData = [...data];
     this.filteredData = [...data];
@@ -726,10 +736,14 @@ class EnrichmentOrchestrator {
 
         if (!isNaN(count)) {
           if (count < 10) {
+            // Add tag for too small companies - New code
+            row.relevanceTag = row.relevanceTag || `Too Small: ${count} employees`;
             tooSmallCount++;
             return false;
           }
           if (count > 1500) {
+            // Add tag for too large companies - New code
+            row.relevanceTag = row.relevanceTag || `Too Large: ${count} employees`;
             tooLargeCount++;
             return false;
           }
@@ -741,6 +755,28 @@ class EnrichmentOrchestrator {
       // If no employee count, add to no data count but keep it for now
       noDataCount++;
       return true;
+    });
+
+    // Apply the same tags to processedData - New code
+    this.processedData = this.processedData.map(row => {
+      const employeeCount =
+        row.organization?.estimated_num_employees ||
+        row['organization.estimated_num_employees'] ||
+        row.employees;
+
+      if (employeeCount) {
+        const normalizedCount = String(employeeCount).replace(/[^\d]/g, '');
+        const count = parseInt(normalizedCount);
+
+        if (!isNaN(count)) {
+          if (count < 10) {
+            row.relevanceTag = row.relevanceTag || `Too Small: ${count} employees`;
+          } else if (count > 1500) {
+            row.relevanceTag = row.relevanceTag || `Too Large: ${count} employees`;
+          }
+        }
+      }
+      return row;
     });
 
     // Store filter analytics
@@ -769,11 +805,6 @@ class EnrichmentOrchestrator {
     this.addLog(`Headcount filtering complete: ${filteredCount} records passed, ${tooSmallCount} too small, ${tooLargeCount} too large, ${noDataCount} with no data.`);
   }
 
-  /**
-   * Apply step-specific filtering
-   * @param {string} stepId - Step ID
-   * @param {Array} data - Data to filter
-   */
   async applyStepSpecificFiltering(stepId, data) {
     // Original count before filtering
     const originalCount = data.length;
@@ -794,11 +825,22 @@ class EnrichmentOrchestrator {
             return true;
           }
 
+          // Apply tag for filtered-out rows - New code
+          row.relevanceTag = row.relevanceTag || `Irrelevant Title: ${row.titleRelevance || 'Unknown'}`;
+
           // Track reason for filtering
           filterReason[row.titleRelevance || 'Unknown'] =
             (filterReason[row.titleRelevance || 'Unknown'] || 0) + 1;
 
           return false;
+        });
+
+        // Important: Update the processedData with tags as well
+        this.processedData = this.processedData.map(row => {
+          if (row.titleRelevance !== 'Founder' && row.titleRelevance !== 'Relevant') {
+            row.relevanceTag = row.relevanceTag || `Irrelevant Title: ${row.titleRelevance || 'Unknown'}`;
+          }
+          return row;
         });
 
         this.filterAnalytics.titleRelevance = {
@@ -822,10 +864,22 @@ class EnrichmentOrchestrator {
             return true;
           }
 
+          // Apply tag for filtered-out rows - New code
+          row.relevanceTag = row.relevanceTag || `Low Company Relevance: Score ${score}/5`;
+
           // Track reason for filtering
           filterReason[`Score: ${score}`] = (filterReason[`Score: ${score}`] || 0) + 1;
 
           return false;
+        });
+
+        // Update the processedData with tags as well
+        this.processedData = this.processedData.map(row => {
+          const score = row.companyRelevanceScore || 0;
+          if (score < 3) {
+            row.relevanceTag = row.relevanceTag || `Low Company Relevance: Score ${score}/5`;
+          }
+          return row;
         });
 
         this.filterAnalytics.companyRelevance = {
@@ -850,10 +904,22 @@ class EnrichmentOrchestrator {
             return true;
           }
 
+          // Apply tag for filtered-out rows - New code
+          row.relevanceTag = row.relevanceTag || `Too Many Indians: ${Math.round(percentage)}%`;
+
           // Track reason for filtering
           filterReason[`Indian headcount ≥${tooManyIndiansThreshold}%`] = (filterReason[`Indian headcount ≥${tooManyIndiansThreshold}%`] || 0) + 1;
 
           return false;
+        });
+
+        // Update the processedData with tags as well
+        this.processedData = this.processedData.map(row => {
+          const percentage = row.percentage_headcount_for_india || 0;
+          if (percentage >= tooManyIndiansThreshold) {
+            row.relevanceTag = row.relevanceTag || `Too Many Indians: ${Math.round(percentage)}%`;
+          }
+          return row;
         });
 
         this.filterAnalytics.indianLeads = {
@@ -863,6 +929,27 @@ class EnrichmentOrchestrator {
         };
 
         this.addLog(`Indian headcount filtering: ${filteredCount} records passed (<${tooManyIndiansThreshold}%), ${originalCount - filteredCount} filtered out.`);
+        break;
+
+      case 'headcountFilter':
+        // Apply tags for headcount filter, even though this is handled separately
+        this.processedData = this.processedData.map(row => {
+          const employeeCount = row.organization?.estimated_num_employees ||
+            row['organization.estimated_num_employees'] ||
+            row.employees;
+
+          if (employeeCount) {
+            const count = parseInt(employeeCount);
+            if (!isNaN(count)) {
+              if (count < 10) {
+                row.relevanceTag = row.relevanceTag || `Too Small: ${count} employees`;
+              } else if (count > 1500) {
+                row.relevanceTag = row.relevanceTag || `Too Large: ${count} employees`;
+              }
+            }
+          }
+          return row;
+        });
         break;
 
       default:
