@@ -136,13 +136,34 @@ const ResultsPage = (props) => {
   };
 
   const handleDownloadData = () => {
-    if (filteredData && filteredData.length > 0) {
-      const result = reportsService.downloadProcessedDataCsv(processedData);
+    // Try multiple sources of data in order of preference
+    let dataToDownload = filteredData;
+
+    // If filteredData isn't available, try loading directly from storage
+    if (!dataToDownload || dataToDownload.length === 0) {
+      dataToDownload = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.FILTERED);
+      console.log("Loaded from FILTERED storage:", dataToDownload);
+    }
+
+    // If still not available, try processed data
+    if (!dataToDownload || dataToDownload.length === 0) {
+      dataToDownload = processedData || storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.PROCESSED);
+      console.log("Loaded from PROCESSED storage:", dataToDownload);
+    }
+
+    // If still not available, try original CSV data
+    if (!dataToDownload || dataToDownload.length === 0) {
+      dataToDownload = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.CSV_DATA);
+      console.log("Loaded from CSV_DATA storage:", dataToDownload);
+    }
+
+    if (dataToDownload && dataToDownload.length > 0) {
+      const result = reportsService.downloadProcessedDataCsv(dataToDownload);
       if (!result.success) {
         alert(`Error downloading data: ${result.error}`);
       }
     } else {
-      alert('No data available to download');
+      alert('No data available to download. This may be due to a session timeout or data not being properly saved.');
     }
   };
 

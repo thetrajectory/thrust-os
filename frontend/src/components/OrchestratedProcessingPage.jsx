@@ -475,26 +475,20 @@ const OrchestratedProcessingPage = () => {
   // Enhance handleViewResults to handle terminated state
   const handleViewResults = () => {
     // Get the data regardless of completion state
-    const processedData = enrichmentOrchestrator.processedData || csvData;
-    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.PROCESSED, processedData);
+    const allData = enrichmentOrchestrator.processedData || csvData;
 
-    const filteredData = enrichmentOrchestrator.filteredData || processedData;
+    // Add console logs
+    console.log("About to save processedData:", allData);
+    console.log("Orchestrator filteredData:", enrichmentOrchestrator.filteredData);
+
+    // Save processed data
+    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.PROCESSED, allData);
+
+    // Get any filtered data if available, otherwise use all processed data
+    const filteredData = enrichmentOrchestrator.filteredData || allData;
+    console.log("About to save filteredData:", filteredData);
+
     storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.FILTERED, filteredData);
-    
-    // Add termination analytics if cancelled
-    if (isCancelling) {
-      const terminationAnalytics = {
-        terminated: true,
-        terminationTime: new Date().toISOString(),
-        completedSteps: enrichmentOrchestrator.currentStepIndex,
-        totalSteps: enrichmentOrchestrator.pipeline.length
-      };
-
-      storageUtils.saveToStorage(
-        storageUtils.STORAGE_KEYS.ANALYTICS,
-        { ...analytics, termination: terminationAnalytics }
-      );
-    }
 
     // Navigate to results page
     navigate('/results');
