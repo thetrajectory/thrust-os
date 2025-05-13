@@ -14,6 +14,7 @@ const ResultsPage = (props) => {
 
   // State for data and statistics
   const [processedData, setProcessedData] = useState([]);
+  const [filteredData, setFilteredData] = useState([]);
   const [originalCount, setOriginalCount] = useState(props.originalCount || 0);
   const [finalCount, setFinalCount] = useState(props.finalCount || 0);
   const [analytics, setAnalytics] = useState(props.analytics || {});
