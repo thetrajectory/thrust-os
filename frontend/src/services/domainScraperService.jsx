@@ -50,15 +50,6 @@ export async function scrapeDomain(data, logCallback, progressCallback) {
 
   const startTimestamp = Date.now()
 
-  // Sample log a few rows to check the domain fields
-  if (untaggedData.length > 0) {
-    const sampleRow = untaggedData[0];
-    logCallback(`Sample row domain info: 
-      - organization?.website_url: ${sampleRow.organization?.website_url || 'undefined'}
-      - organization?.primary_domain: ${sampleRow.organization?.primary_domain || 'undefined'}
-      - website: ${sampleRow.website || 'undefined'}`);
-  }
-
   // Get configuration from environment variables
   const serperApiKey = import.meta.env.VITE_REACT_APP_SERPER_API_KEY;
   const batchSize = parseInt(import.meta.env.VITE_REACT_APP_SCRAPER_BATCH_SIZE || "5");
@@ -97,13 +88,29 @@ export async function scrapeDomain(data, logCallback, progressCallback) {
       const index = i + j;
       const row = untaggedData[index];
 
-      // Get domain from organization or fallback to website_url or other fields
-      // Prioritize organization.website_url as requested
-      const domain = extractDomain(
-        row.organization?.website_url ||  // First choice
-        row.organization?.primary_domain || // Second choice
-        row.website  // Fallback
-      );
+      // Directly use organization.website_url if available
+      let domainUrl = null;
+      if (row.organization?.website_url) {
+        domainUrl = row.organization.website_url;
+        logCallback(`Using organization.website_url: ${domainUrl}`);
+      } else if (row.organization?.primary_domain) {
+        domainUrl = row.organization.primary_domain;
+        logCallback(`Fallback to organization.primary_domain: ${domainUrl}`);
+      } else if (row.website) {
+        domainUrl = row.website;
+        logCallback(`Fallback to website field: ${domainUrl}`);
+      } else if (row.company) {
+        // Create a simple domain as last resort
+        const simplifiedName = row.company.toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+        if (simplifiedName) {
+          domainUrl = `https://${simplifiedName}.com`;
+          logCallback(`Created domain from company name: ${domainUrl}`);
+        }
+      }
+
+      // Extract clean domain from the URL
+      const domain = domainUrl ? extractDomain(domainUrl) : null;
+
 
       // Log where the domain was found
       if (row.organization?.website_url) {

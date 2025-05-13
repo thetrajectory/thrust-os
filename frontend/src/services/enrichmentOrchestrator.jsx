@@ -471,37 +471,7 @@ class EnrichmentOrchestrator {
       if (stepId === 'headcountFilter') {
         await this.processHeadcountFilter();
       } else {
-        // Special pre-processing for domain scraping
-        if (stepId === 'domainScraping') {
-          // Normalize data structure before domain scraping
-          // IMPORTANT: Only normalize untagged rows
-          const untaggedRows = this.processedData.filter(row => !row.relevanceTag);
-          this.addLog(`Normalizing data structure for ${untaggedRows.length} untagged rows...`);
-
-          // Normalize only untagged rows
-          const normalizedUntaggedRows = this.normalizeDataStructure(untaggedRows);
-
-          // Create a map for normalized rows
-          const normalizedRowsMap = new Map();
-          normalizedUntaggedRows.forEach(row => {
-            const key = row.linkedin_url || (row.organization && row.organization.id) || row.id;
-            if (key) normalizedRowsMap.set(key, row);
-          });
-
-          // Update only the untagged rows in the original data
-          this.processedData = this.processedData.map(row => {
-            if (row.relevanceTag) return row; // Skip tagged rows
-
-            const key = row.linkedin_url || (row.organization && row.organization.id) || row.id;
-            if (key && normalizedRowsMap.has(key)) {
-              return normalizedRowsMap.get(key);
-            }
-            return row;
-          });
-          this.filteredData = this.normalizeDataStructure(this.filteredData);
-        }
-
-        // Make sure we have data to process
+        
         // Count untagged rows for this step
         const untaggedRows = stepId === 'titleRelevance'
           ? this.processedData  // For first step, process all rows
