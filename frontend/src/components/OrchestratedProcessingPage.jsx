@@ -475,15 +475,12 @@ const OrchestratedProcessingPage = () => {
   // Enhance handleViewResults to handle terminated state
   const handleViewResults = () => {
     // Get the data regardless of completion state
-    const allData = enrichmentOrchestrator.processedData || csvData;
+    const processedData = enrichmentOrchestrator.processedData || csvData;
+    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.PROCESSED, processedData);
 
-    // Save processed data
-    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.PROCESSED, allData);
-
-    // Get any filtered data if available, otherwise use all processed data
-    const filteredData = enrichmentOrchestrator.filteredData || allData;
+    const filteredData = enrichmentOrchestrator.filteredData || processedData;
     storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.FILTERED, filteredData);
-
+    
     // Add termination analytics if cancelled
     if (isCancelling) {
       const terminationAnalytics = {
