@@ -31,6 +31,9 @@ class ReportsService {
           connected_on: row.connected_on || '',
           custom_prompt: row.customPrompt || '',
 
+          // Add the tag column
+          tag: row.relevanceTag || '',
+
           // Include entire JSON response 
           entire_json_response: row.entire_json_response || row.apollo_json || '',
 

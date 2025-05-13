@@ -12,6 +12,46 @@ const FileUploadPage = () => {
         isError: false
     });
 
+    function parseCustomDate(dateStr) {
+        if (!dateStr) return null;
+
+        // If it's already in ISO format, just return it
+        if (dateStr.includes('T') || dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            return dateStr;
+        }
+
+        // Try to parse formats like "17-Jan-18"
+        try {
+            // Handle format like "17-Jan-18" or variations
+            const match = dateStr.match(/(\d{1,2})[- ]([A-Za-z]{3})[- ](\d{2}|\d{4})/);
+            if (match) {
+                const day = match[1].padStart(2, '0');
+                let month;
+                const monthStr = match[2].toLowerCase();
+                const months = {
+                    'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'may': '05', 'jun': '06',
+                    'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+                };
+                month = months[monthStr];
+
+                let year = match[3];
+                // Convert 2-digit year to 4-digit (assuming 20xx for years less than 50, 19xx otherwise)
+                if (year.length === 2) {
+                    const twoDigitYear = parseInt(year);
+                    year = twoDigitYear < 50 ? `20${year}` : `19${year}`;
+                }
+
+                // Return YYYY-MM-DD format
+                return `${year}-${month}-${day}`;
+            }
+        } catch (e) {
+            console.error(`Failed to parse date: ${dateStr}`, e);
+        }
+
+        // If all parsing fails, return today's date as fallback
+        return new Date().toISOString().split('T')[0];
+    }
+
     const handleFileChange = (e) => {
         const selectedFile = e.target.files[0];
 
@@ -92,6 +132,13 @@ const FileUploadPage = () => {
                     if (!row.company && row.organization) {
                         row.company = row.organization;
                     }
+
+                    // Add connected_on field if it exists, or use current timestamp
+                    row.connected_on = parseCustomDate(row.connected_on) || new Date().toISOString().split('T')[0];
+
+                    // Initialize relevanceTag field
+                    row.relevanceTag = '';
+
                     return row;
                 });
 
@@ -105,6 +152,7 @@ const FileUploadPage = () => {
                 }));
 
                 // Save data to session storage
+                console.log(`CSV data loaded: ${enrichedData.length} rows`);
                 storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.CSV_DATA, enrichedData);
 
                 // Navigate to processing page
