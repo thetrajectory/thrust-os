@@ -3,53 +3,47 @@ import apiClient from '../../utils/apiClient';
 
 // Title relevance prompt from the provided original
 const TITLE_RELEVANCE_PROMPT = position =>
-  `## Classify Title into Enterprise Device Benefits Buyer Category ##
+  `## Classify Title into Enterprise VideoCX Buyer Category ##
 Hi ChatGPT, your task is to **analyze a professional title or tagline** and classify it into **only one of the following categories**:
 - **Founder**
 - **Relevant**
 - **Irrelevant**
-You must classify based on whether the person is likely to **influence or make decisions** related to **employee device benefit programs**, **leasing workflows**, or **orchestrating HR-Finance-IT coordination** in **large enterprises (500+ employees)**.
+You must classify based on whether the person is likely to **influence, own, or directly impact decisions** related to **enterprise deployment of Video KYC, Video Banking, and AI-enabled video customer engagement platforms** — particularly within financial services, insurance, or lending institutions.
 ---
 ### :brain: Category Definitions & Rules
 #### **Founder**
 Use **only** if the title includes clear founding language:
-- :white_check_mark: **Founder**, **Co-Founder**, **Founding Partner**, or **Founding CTO**
-- :white_check_mark: CEO or Managing Director **only if founding is clearly implied**
-- :x: Do **not** classify COOs, Presidents, or other CXOs as "Founder" unless explicitly labeled as such
+- **Founder**, **Co-Founder**, **Founding Partner**, or **Founding CTO**
+- CEO or Managing Director **only if founding is clearly implied**
+Presidents, Chairmans can also be classified here, but
+Do **not** classify COOs or other CXOs as "Founder" unless explicitly labeled as such
 ---
 #### **Relevant**
-Use this for **decision-makers or strong influencers** in the following enterprise functions — especially those who:
-- Control payroll, IT provisioning, or benefits workflows
-- Coordinate across HR, IT, and Finance
-- Implement or scale employee-facing perks, leasing, or compensation-linked infra
-**Accepted Functions & Titles:**
-| Function | Typical Relevant Titles |
-|----------|-------------------------|
-| **People/HR** | CHRO, VP People, Head of HR, Director People Ops, Total Rewards Lead, Benefits Program Manager, Compensation Lead |
-| **Finance/Payroll** | CFO, VP Finance, Head of Payroll, Director FP&A, Controller, Senior Payroll Manager |
-| **IT / End-User Support** | CIO, VP IT, Director End-User Computing, IT Asset Manager |
-| **Procurement / Vendor Mgmt** | Head of Procurement, Strategic Sourcing Lead, Vendor Governance Director |
-| **Ops / Cross-functional** | COO, Chief of Staff, Director of Workplace Ops |
-| **Specialist Tags** | "Total Rewards", "Compensation", "Benefits", "Employee Experience", "Payroll" — if tied to manager+ scope |
-:white_check_mark: Use only if role is **Director or above**, *or* is a **clearly scoped specialist** in a relevant function (e.g., "Compensation Manager" at 10,000+ org)
-:white_check_mark: "Manager", "Lead", or "Specialist" are valid **only** if:
-- Role is within a top-priority function (HR/Payroll/IT/Comp & Benefits)
-- Title clearly signals implementation responsibility, not just execution
-:x: **Do not include** generalists (e.g., "HR Manager", "IT Analyst") unless function is *narrowly focused* and **title + level indicate control or implementation authority**
-:arrow_right: Even if "device leasing" isn't mentioned, ask:
-*Does this title suggest the person could reasonably design, approve, or run a modern, scalable employee benefit or device program tied to payroll or IT workflows?*
+Use this for **senior decision-makers in the following five enterprise functions**, aligned with the buyer profile for enterprise-grade video customer interaction platforms:
+- **Banking & Financial Services Operations**
+  - Chief Operating Officer, EVP – Retail Ops, VP Operations, Head of Customer Onboarding
+- **Risk, Compliance & KYC**
+  - Chief Compliance Officer, Head of Regulatory Affairs, Director KYC & AML, Internal Audit Lead
+- **IT Infrastructure & Security**
+  - Chief Information Security Officer, VP IT Infrastructure, Head of Enterprise Architecture, VP Cloud Hosting
+- **Digital Transformation & CX**
+  - Chief Digital Officer, Head of Digital Transformation, VP Customer Experience, Innovation Lead
+- **Enterprise Procurement**
+  - Head of Vendor Management, IT Procurement Lead, Director Strategic Sourcing
+Titles must be **mid-senior or above**
+Exclude if junior (e.g., Analyst, Executive, Coordinator)
+Even if “VideoCX” or “KYC” isn’t explicitly mentioned, ask:
+*Does this title suggest someone who owns or shapes workflows around digital onboarding, video-based customer engagement, or compliance-grade service delivery in a financial institution?*
 If yes → **Relevant**
 ---
 #### **Irrelevant**
 Use for:
-- **All unrelated functions**, such as Sales, Marketing, Customer Success, Legal, Admin, Country Mgmt
-- **All junior roles**, regardless of function
-- **Generic titles** like "Business Head" or "Strategy Lead" unless grounded in a relevant function
-- **Broad talent/people/ops roles** with no visible link to payroll, benefits, or asset provisioning
+- **All other functions**, including Sales, Marketing, HR, Legal, Talent Acquisition, Customer Support, Admin, Strategy
+- **All junior roles**, regardless of department
+- **Ambiguous titles** with no direct connection to enterprise digital operations, compliance, or infrastructure
 **Examples:**
-- Sales Director, Marketing VP, HR Executive, Talent Acquisition Lead, Country Manager
-- Product Analyst, Finance Associate, IT Support Executive, Procurement Trainee
-- "Business Strategy Lead" (unless nested in HR/IT/Payroll context)
+- Sales Director, VP Marketing, HR Business Partner, Legal Advisor, Customer Success Manager, Strategy Director, Country Manager
+- KYC Analyst, Digital Intern, Procurement Executive, Junior Architect, Talent Lead, Customer Service Rep
 ---
 ### 'Job Title Input' starts ###
 ${position}
@@ -60,11 +54,13 @@ ${position}
 ## Ideal output format ends ##
 ---
 Return only the final output. No introductions, no explanations—just the output.
+markdown
+Copy
+Edit
 ## :label: Tagging Logic
-- **Founders**: Use only when founding roles are explicitly stated (Founder, Co-Founder, etc.)
-- **Relevant**: Use for all **director seniority** posts like: CEOs, CSOs, CROs, Presidents, Titles from HR, Payroll, IT, Ops, and Finance with **director+ seniority** or **narrow specialist scope** (Comp/Benefits/Rewards/etc.)
-- **Irrelevant**: All others—especially generalists, juniors, or roles with no clear authority or linkage to device benefits
-Return only the final output. No introductions, no explanations—just the output.`;
+- **Founders**: Only titles with explicit founding language (Founder, Co-Founder, Founding Partner, etc.)
+- **Relevant**: Senior decision-makers in Ops, Risk/Compliance, IT Infra, Digital CX, or Procurement — particularly within BFSI sectors using/considering video-based onboarding or verification platforms.
+- **Irrelevant**: Sales, Marketing, HR, Legal, Strategy, junior roles, or anyone outside core buying centers for compliance-grade enterprise video platforms.`;
 
 /**
  * Process title relevance for a batch of data sequentially
