@@ -133,7 +133,7 @@ export async function fetchAnnualReports(data, logCallback, progressCallback) {
     // Get configuration from environment
     const serperApiKey = import.meta.env.VITE_REACT_APP_SERPER_API_KEY;
     const openaiApiKey = import.meta.env.VITE_REACT_APP_OPENAI_API_KEY;
-    const model = import.meta.env.VITE_REACT_APP_COMPANY_RELEVANCE_MODEL || "gpt-4o-mini";
+    const model = import.meta.env.VITE_REACT_APP_COMPANY_RELEVANCE_MODEL;
     const batchSize = parseInt(import.meta.env.VITE_REACT_APP_ANNUAL_REPORT_BATCH_SIZE || "5");
 
     if (!serperApiKey) {

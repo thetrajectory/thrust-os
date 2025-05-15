@@ -17,7 +17,7 @@ export async function processHeadcountFilter(data, logCallback, progressCallback
     const startTimestamp = Date.now();
 
     // Get configuration from environment (optional - you can hardcode the minimum headcount)
-    const minHeadcount = parseInt(import.meta.env.VITE_REACT_APP_MIN_HEADCOUNT || "100");
+    const minHeadcount = parseInt(import.meta.env.VITE_REACT_APP_MIN_HEADCOUNT_VCX);
 
     // Initialize result array with original data
     const processedData = [...untaggedData];

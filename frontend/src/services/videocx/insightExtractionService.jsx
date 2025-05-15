@@ -159,8 +159,8 @@ export async function processInsightsExtraction(data, logCallback, progressCallb
 
     // Get configuration from environment
     const openaiApiKey = import.meta.env.VITE_REACT_APP_OPENAI_API_KEY;
-    const model = import.meta.env.VITE_REACT_APP_GPT4_MODEL || "gpt-4o";
-    const batchSize = parseInt(import.meta.env.VITE_REACT_APP_INSIGHTS_BATCH_SIZE || "3");
+    const model = import.meta.env.VITE_REACT_APP_COMPANY_RELEVANCE_MODEL;
+    const batchSize = parseInt(import.meta.env.VITE_REACT_APP_INSIGHT_BATCH_SIZE || "5");
 
     if (!openaiApiKey) {
         throw new Error('OpenAI API key is not set. Please check your environment configuration.');

@@ -88,8 +88,8 @@ export async function processPublicCompanyFilter(data, logCallback, progressCall
 
   // Get configuration from environment
   const apiKey = import.meta.env.VITE_REACT_APP_OPENAI_API_KEY;
-  const model = import.meta.env.VITE_REACT_APP_COMPANY_RELEVANCE_MODEL || "gpt-4o-mini";
-  const batchSize = parseInt(import.meta.env.VITE_REACT_APP_PUBLIC_COMPANY_BATCH_SIZE || "5");
+  const model = import.meta.env.VITE_REACT_APP_COMPANY_RELEVANCE_MODEL;
+  const batchSize = parseInt(import.meta.env.VITE_REACT_APP_PUBLIC_COMPANY_BATCH_SIZE);
 
   if (!apiKey) {
     throw new Error('OpenAI API key is not set. Please check your environment configuration.');
