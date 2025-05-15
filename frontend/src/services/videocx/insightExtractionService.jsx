@@ -159,7 +159,7 @@ export async function processInsightsExtraction(data, logCallback, progressCallb
 
     // Get configuration from environment
     const openaiApiKey = import.meta.env.VITE_REACT_APP_OPENAI_API_KEY;
-    const model = import.meta.env.VITE_REACT_APP_COMPANY_RELEVANCE_MODEL;
+    const model = import.meta.env.VITE_REACT_APP_INSIGHT_EXTRACTION_MODEL;
     const batchSize = parseInt(import.meta.env.VITE_REACT_APP_INSIGHT_BATCH_SIZE || "5");
 
     if (!openaiApiKey) {
