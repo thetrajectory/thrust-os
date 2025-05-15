@@ -13,8 +13,8 @@ You must classify based on whether the person is likely to **influence, own, or 
 ### :brain: Category Definitions & Rules
 #### **Founder**
 Use **only** if the title includes clear founding language:
-- **Founder**, **Co-Founder**, **Founding Partner**, or **Founding CTO**
-- CEO or Managing Director **only if founding is clearly implied**
+- :white_check_mark: **Founder**, **Co-Founder**, **Founding Partner**, or **Founding CTO**
+- :white_check_mark: CEO or Managing Director **only if founding is clearly implied**
 Presidents, Chairmans can also be classified here, but
 Do **not** classify COOs or other CXOs as "Founder" unless explicitly labeled as such
 ---
@@ -30,9 +30,9 @@ Use this for **senior decision-makers in the following five enterprise functions
   - Chief Digital Officer, Head of Digital Transformation, VP Customer Experience, Innovation Lead
 - **Enterprise Procurement**
   - Head of Vendor Management, IT Procurement Lead, Director Strategic Sourcing
-Titles must be **mid-senior or above**
-Exclude if junior (e.g., Analyst, Executive, Coordinator)
-Even if “VideoCX” or “KYC” isn’t explicitly mentioned, ask:
+:white_check_mark: Titles must be **mid-senior or above**
+:x: Exclude if junior (e.g., Analyst, Executive, Coordinator)
+:arrow_right: Even if “VideoCX” or “KYC” isn’t explicitly mentioned, ask:
 *Does this title suggest someone who owns or shapes workflows around digital onboarding, video-based customer engagement, or compliance-grade service delivery in a financial institution?*
 If yes → **Relevant**
 ---
@@ -63,7 +63,7 @@ Edit
 - **Irrelevant**: Sales, Marketing, HR, Legal, Strategy, junior roles, or anyone outside core buying centers for compliance-grade enterprise video platforms.`;
 
 /**
- * Process title relevance for a batch of data sequentially
+ * Process title relevance for a batch of data
  * @param {Array} data - Array of lead data objects
  * @param {Function} logCallback - Callback function to log messages
  * @param {Function} progressCallback - Callback function to update progress
@@ -83,8 +83,8 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
     throw new Error('OpenAI API key is not set. Please check your environment configuration.');
   }
 
-  // Initialize result array with original data - MAKE A DEEP COPY
-  const processedData = JSON.parse(JSON.stringify(data));
+  // Initialize result array with original data
+  const processedData = [...data];
 
   // Track analytics
   let founderCount = 0;
@@ -99,15 +99,14 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
     const currentBatchSize = Math.min(batchSize, data.length - i);
     logCallback(`Processing batch ${Math.floor(i / batchSize) + 1}: items ${i + 1} to ${i + currentBatchSize}`);
 
-    // Store batch results
-    const batchResults = [];
+    // Process each item in the batch
+    const batchPromises = [];
 
-    // Process items sequentially
     for (let j = 0; j < currentBatchSize; j++) {
       const index = i + j;
       const row = data[index];
 
-      // Skip processing if row is already tagged
+      // Skip processing if row is already tagged - unlikely in title relevance step as it's the first step
       if (row.relevanceTag) {
         logCallback(`Skipping item ${index + 1}: Already tagged as "${row.relevanceTag}"`);
         skippedCount++;
@@ -115,57 +114,56 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
         continue;
       }
 
-      try {
-        // Process one item at a time
-        const result = await processSingleTitle(row, index, apiKey, model, logCallback);
+      // Create a promise for each item in the batch
+      const processPromise = processSingleTitle(row, index, apiKey, model, logCallback)
+        .then(result => {
+          // Update the result in the processedData array
+          processedData[index] = {
+            ...processedData[index],
+            ...result.data
+          };
 
-        // Store result without immediately updating processedData
-        batchResults.push(result);
+          // Update analytics
+          if (result.data.titleRelevance === 'Founder') {
+            founderCount++;
+          } else if (result.data.titleRelevance === 'Relevant') {
+            relevantCount++;
+          } else if (result.data.titleRelevance === 'Irrelevant') {
+            irrelevantCount++;
+          }
 
-        // Update analytics
-        if (result.data.titleRelevance === 'Founder') {
-          founderCount++;
-        } else if (result.data.titleRelevance === 'Relevant') {
-          relevantCount++;
-        } else if (result.data.titleRelevance === 'Irrelevant') {
-          irrelevantCount++;
-        }
+          // Track tokens
+          if (result.tokens) {
+            tokensUsed += result.tokens;
+          }
 
-        // Track tokens
-        if (result.tokens) {
-          tokensUsed += result.tokens;
-        }
+          // Log individual item completion
+          logCallback(`Processed item ${index + 1}: ${result.data.titleRelevance} - ${row.position || 'No position'}`);
 
-        // Log individual item completion
-        logCallback(`Processed item ${index + 1}: ${result.data.titleRelevance} - ${row.position || 'No position'}`);
-      }
-      catch (error) {
-        logCallback(`Error processing item ${index + 1}: ${error.message}`);
-        errorCount++;
+          // Update progress
+          progressCallback((index + 1) / data.length * 100);
+        })
+        .catch(error => {
+          logCallback(`Error processing item ${index + 1}: ${error.message}`);
+          errorCount++;
 
-        // Store error result
-        batchResults.push({
-          index,
-          data: {
+          // Add error info to the processed data
+          processedData[index] = {
+            ...processedData[index],
             titleRelevance: 'ERROR',
             titleRelevanceScore: 0,
             titleRelevanceError: error.message
-          }
+          };
+
+          // Update progress even on error
+          progressCallback((index + 1) / data.length * 100);
         });
-      }
 
-      // Update progress
-      progressCallback((index + 1) / data.length * 100);
+      batchPromises.push(processPromise);
     }
 
-    // Now update all processed data at once after batch completion
-    // This maintains the behavior more similar to the original code
-    for (const result of batchResults) {
-      processedData[result.index] = {
-        ...processedData[result.index],
-        ...result.data
-      };
-    }
+    // Wait for all items in the batch to complete
+    await Promise.all(batchPromises);
 
     // Add a small delay between batches
     if (i + currentBatchSize < data.length) {
