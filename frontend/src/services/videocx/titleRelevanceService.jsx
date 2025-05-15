@@ -1,7 +1,7 @@
 // services/videocx/titleRelevanceService.jsx
-import axios from 'axios';
+import apiClient from '../../utils/apiClient';
 
-// Title relevance prompt template for Enterprise Device Benefits Buyer
+// Title relevance prompt template for VideoCX
 const TITLE_RELEVANCE_PROMPT = position =>
   `## Classify Title into Enterprise Device Benefits Buyer Category ##
 Hi ChatGPT, your task is to **analyze a professional title or tagline** and classify it into **only one of the following categories**:
@@ -62,7 +62,7 @@ ${position}
 Return only the final output. No introductions, no explanations—just the output.
 ## :label: Tagging Logic
 - **Founders**: Use only when founding roles are explicitly stated (Founder, Co-Founder, etc.)
-- **Relevant**: Use for all **director seniority** posts like: CEOs, CSOs, CROs, Presidents, Titles from HR, Payroll, IT, Ops, and Finance with **director+ seniority** or **narrow specialist scope** (Comp/Benefits/Rewards/etc.)
+- **Relevant**: Use for all **director seniority** posts like: Chairman, CEO, CSO, CRO, President, Titles from HR, Payroll, IT, Ops, and Finance with **director+ seniority** or **narrow specialist scope** (Comp/Benefits/Rewards/etc.)
 - **Irrelevant**: All others—especially generalists, juniors, or roles with no clear authority or linkage to device benefits
 Return only the final output. No introductions, no explanations—just the output.
 `;
@@ -75,11 +75,11 @@ Return only the final output. No introductions, no explanations—just the outpu
  * @returns {Promise<Object>} - Object containing processed data and analytics
  */
 export async function processTitleRelevance(data, logCallback, progressCallback) {
-  logCallback("Starting Title Relevance Analysis...");
+  logCallback("Starting VideoCX Title Relevance Analysis...");
 
   // Get configuration from environment
   const apiKey = import.meta.env.VITE_REACT_APP_OPENAI_API_KEY;
-  const model = import.meta.env.VITE_REACT_APP_TITLE_RELEVANCE_MODEL;
+  const model = import.meta.env.VITE_REACT_APP_TITLE_RELEVANCE_MODEL || "gpt-4o-mini";
   const batchSize = parseInt(import.meta.env.VITE_REACT_APP_TITLE_RELEVANCE_BATCH_SIZE || "100");
 
   const startTimestamp = Date.now();
@@ -92,7 +92,7 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
   const processedData = [...data];
 
   // Track analytics
-  let founderCount = 0;
+  let decisionMakerCount = 0;
   let relevantCount = 0;
   let irrelevantCount = 0;
   let errorCount = 0;
@@ -111,7 +111,7 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
       const index = i + j;
       const row = data[index];
 
-      // Skip processing if row is already tagged - unlikely in title relevance step as it's the first step
+      // Skip processing if row is already tagged
       if (row.relevanceTag) {
         logCallback(`Skipping item ${index + 1}: Already tagged as "${row.relevanceTag}"`);
         skippedCount++;
@@ -130,7 +130,7 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
 
           // Update analytics
           if (result.data.titleRelevance === 'Founder') {
-            founderCount++;
+            decisionMakerCount++;
           } else if (result.data.titleRelevance === 'Relevant') {
             relevantCount++;
           } else if (result.data.titleRelevance === 'Irrelevant') {
@@ -182,7 +182,7 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
 
   // Log analysis summary
   logCallback(`Title Relevance Analysis Complete:`);
-  logCallback(`- Founders: ${founderCount}`);
+  logCallback(`- Decision Makers: ${decisionMakerCount}`);
   logCallback(`- Relevant: ${relevantCount}`);
   logCallback(`- Irrelevant: ${irrelevantCount}`);
   logCallback(`- Skipped: ${skippedCount}`);
@@ -193,14 +193,14 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
   return {
     data: processedData,
     analytics: {
-      founderCount,
+      decisionMakerCount,
       relevantCount,
       irrelevantCount,
       skippedCount,
       errorCount,
       tokensUsed,
       totalProcessed: data.length - skippedCount,
-      startTimes: startTimestamp,
+      startTime: startTimestamp,
       endTime: endTimestamp,
       processingTimeSeconds: processingTimeSeconds
     }
@@ -233,48 +233,60 @@ async function processSingleTitle(row, index, apiKey, model, logCallback) {
   }
 
   try {
-    logCallback(`Analyzing position: ${position}`);
+    logCallback(`Analyzing position: "${position}"`);
 
     // Call OpenAI API
     const result = await callOpenAIAPI(position, apiKey, model);
-
     const tokenUsage = result.totalTokens || 0;
 
-    // Extract and normalize the response
-    const responseText = result.completion.trim();
+    // Extract and normalize the response to lowercase for consistent matching
+    const responseText = result.completion.trim().toLowerCase();
 
-    // Exact match to one of the three valid categories
+    // Log the raw response
+    logCallback(`Raw model response: "${result.completion.trim()}"`);
+
+    // Check for founder titles in both the response and the position
+    const isFounderInTitle = position.toLowerCase().includes('founder') ||
+      position.toLowerCase().includes('ceo') ||
+      position.toLowerCase().includes('president') ||
+      position.toLowerCase().includes('chairman');
+
     let relevance;
     let score;
 
-    // After getting the OpenAI response
-    console.log("OpenAI raw response:", responseText);
-
-    // Use exact matching for categories with more rigorous checks and handling for founder titles
-    if (responseText.toLowerCase() === 'founder') {
+    // Strict case-insensitive matching against expected categories
+    if (responseText === 'founder' || (responseText.includes('founder') && !responseText.includes('not'))) {
       relevance = 'Founder';
       score = 3; // Highest priority
-    } else if (responseText.toLowerCase() === 'relevant') {
+    } else if (responseText === 'relevant' || responseText.includes('relevant')) {
       relevance = 'Relevant';
       score = 2; // Medium priority
-    } else if (responseText.toLowerCase() === 'irrelevant') {
+    } else if (responseText === 'irrelevant' || responseText.includes('irrelevant')) {
       relevance = 'Irrelevant';
       score = 0; // No priority
     } else {
-      // Handle unexpected responses by looking for partial matches or title patterns
-      if (responseText.toLowerCase().includes('founder') || position.toLowerCase().includes('founder')) {
+      // For ambiguous responses, check the position title
+      if (isFounderInTitle) {
         relevance = 'Founder';
         score = 3;
-        logCallback(`Special case: Position "${position}" containing "founder" classified as Founder`);
-      } else if (responseText.toLowerCase().includes('relevant')) {
+        logCallback(`Fallback: Position "${position}" appears to be founder-related, classified as Founder`);
+      } else if (responseText.includes('decision') || responseText.includes('executive') || responseText.includes('c-suite')) {
         relevance = 'Relevant';
         score = 2;
+        logCallback(`Fallback: Position "${position}" appears to be executive/decision-making, classified as Relevant`);
       } else {
-        // Default to Irrelevant for any other response
+        // Default fallback
         relevance = 'Irrelevant';
         score = 0;
+        logCallback(`Fallback: Unknown classification "${responseText}" for position "${position}", defaulting to Irrelevant`);
       }
-      logCallback(`Warning: Unexpected response format "${responseText}" for position "${position}". Defaulting to ${relevance}.`);
+    }
+
+    // Additional check - override if position is clearly a founder
+    if (isFounderInTitle && relevance !== 'Founder') {
+      logCallback(`Override: Position "${position}" contains founder/executive terms but was classified as ${relevance}. Changing to Founder.`);
+      relevance = 'Founder';
+      score = 3;
     }
 
     return {
@@ -282,7 +294,7 @@ async function processSingleTitle(row, index, apiKey, model, logCallback) {
       data: {
         titleRelevance: relevance,
         titleRelevanceScore: score,
-        originalResponse: responseText,
+        originalResponse: result.completion.trim(),
         customPrompt: TITLE_RELEVANCE_PROMPT(position)
       },
       tokens: tokenUsage
@@ -313,52 +325,37 @@ async function callOpenAIAPI(position, apiKey, model) {
   // Create the prompt
   const prompt = TITLE_RELEVANCE_PROMPT(position);
 
-  // Set up the request
-  const requestData = {
-    model: model,
-    messages: [
-      {
-        role: "user",
-        content: prompt
-      }
-    ],
-    max_tokens: 10, // Very short response needed
-    temperature: 0.1, // Low temperature for consistent results
-  };
-
+  // Set up the request using the apiClient
   try {
-    // Make the API request
-    const response = await axios.post('/api/openai/chat/completions', requestData, {
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      timeout: 10000
+    const response = await apiClient.openai.chatCompletion({
+      model: model || 'gpt-4o-mini',
+      messages: [
+        { role: "system", content: "You are an expert in classifying executive titles for VideoCX." },
+        { role: "user", content: prompt }
+      ],
+      max_tokens: 10, // Very short response needed
+      temperature: 0.1 // Low temperature for consistent results
     });
 
-    // Check for errors
-    if (response.data.error) {
-      console.error("OpenAI API Error:", response.data.error);
-      throw new Error(`OpenAI API Error: ${response.data.error.message || 'Unknown error'}`);
+    // Extract the completion
+    let completion = '';
+    if (response && response.choices && response.choices.length > 0) {
+      completion = response.choices[0].message.content;
     }
 
-    // Extract the completion
-    const completion = response.data.choices[0].message.content;
-
     // Extract token usage
-    const promptTokens = response.data.usage?.prompt_tokens || 0;
-    const completionTokens = response.data.usage?.completion_tokens || 0;
-    const totalTokens = response.data.usage?.total_tokens || 0;
+    let totalTokens = 0;
+    if (response && response.usage) {
+      totalTokens = response.usage.total_tokens || 0;
+    }
 
-    console.log("Title Relevance Finished");
     return {
       completion,
-      promptTokens,
-      completionTokens,
       totalTokens
     };
   } catch (error) {
-    console.error("OpenAI API request failed:", error.response?.data || error.message);
-    throw new Error(`OpenAI API request failed: ${error.response?.data?.error?.message || error.message}`);
+    console.error("OpenAI API request failed:", error);
+    throw new Error(`OpenAI API request failed: ${error.message}`);
   }
 }
 
