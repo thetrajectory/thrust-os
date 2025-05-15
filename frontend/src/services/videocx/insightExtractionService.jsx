@@ -3,6 +3,108 @@ import apiClient from '../../utils/apiClient';
 import supabase from '../supabaseClient';
 
 /**
+ * Prompt template for extracting insights from annual reports text
+ * @param {string} companyName - Company name
+ * @param {string} reportText - Text content from the annual report
+ * @returns {string} - Formatted prompt
+ */
+const INSIGHTS_EXTRACTION_PROMPT = (annualReportRawText) => {
+    return `
+        # 10-K CX + Ops Signal Intelligence Prompt (4-Signal Deep Review)
+Hi ChatGPT, your task is to **analyze the 10-K filing of a company** and extract insights for **4 specific customer-experience signals** using a **1–5 intensity ranking scale** per signal.
+You must:
+- **Read the full context block carefully**
+- For **each of the 4 signals**, assign a score between **1 (none) and 5 (strong, clear signal)**
+- Write a **3–6 line, highly information-dense rationale** per signal
+- Cite the **section name in parentheses** where evidence was found (e.g. *"MD&A"*, *"Strategy"*)
+- **Return only the final output** — no explanations, no summaries
+---
+## :white_check_mark: Signal 1: Digital Transformation / Capability Upgrade
+**Goal**: Detect evidence of investment in digital modernization in customer-facing banking.
+**Score Criteria:**
+- **5**: Strong digital infra and CX tooling initiatives underway — cloud, AI, app revamp, embedded journeys
+- **4**: Clear roadmap and partial initiatives around modernization
+- **3**: Generic "digital-first" claims + limited action
+- **2**: Aspirational only, vague or deferred
+- **1**: No digital initiatives mentioned
+**Search Sections**: MD&A, Strategy, Tech, CapEx, Risk Factors
+**Key Phrases**:
+"core banking upgrade", "digital transformation", "cloud migration", "CX modernization", "AI/automation in service", "app revamp", "embedded journeys", "customer experience platform"
+:x: Don't count vague digital ambition without evidence
+---
+## :moneybag: Signal 2: Rising Retail Customer Acquisition / Ops Costs
+**Goal**: Detect cost pressure in acquiring or servicing retail customers.
+**Score Criteria:**
+- **5**: Multiple clear mentions of CAC/op-ex/service delivery pressure in retail
+- **4**: Retail segment shows operating cost or margin strain
+- **3**: General OpEx increase, not retail-specific
+- **2**: Implied pressure (e.g., inflation), no direct mention
+- **1**: No cost pressure observed
+**Search Sections**: MD&A, Segment Analysis (Retail), P&L commentary, Risk Factors
+**Key Phrases**:
+"rising OpEx", "customer acquisition cost", "cost-to-income ratio", "margin compression", "onboarding cost pressure", "compliance burden"
+:x: Don't count wholesale or non-retail operations
+---
+## :department_store: Signal 3: Branch Closures / Consolidation / Phygital Strategy
+**Goal**: Detect physical branch rationalization or shift to digital-hybrid models.
+**Score Criteria:**
+- **5**: Explicit closures + stated phygital strategy underway
+- **4**: Branch optimization in progress; assisted-digital or hybrid models emerging
+- **3**: Aspirational phygital vision without tactical actions
+- **2**: Traditional branch focus; one-off closures
+- **1**: No mention of branch strategy
+**Search Sections**: MD&A, Strategy, Retail Ops, Distribution Strategy
+**Key Phrases**:
+"branch consolidation", "branch rationalization", "phygital strategy", "self-service zones", "network optimization", "hub and spoke", "assisted digital", "physical footprint reduction"
+:x: Don't count ATM-only optimization or generic digital growth without branch impact
+---
+## :earth_africa: Signal 4: Tier 2/3 or Rural Market Expansion
+**Goal**: Detect efforts to serve non-metro, rural, or underserved markets using digital means.
+**Score Criteria:**
+- **5**: Strong rural/Tier 2-3 push + digital or assisted model (e.g. video onboarding)
+- **4**: Financial inclusion strategy tied to underserved segments via tech
+- **3**: Mentions of semi-urban expansion, no delivery model
+- **2**: Vague growth references with no geography
+- **1**: No mention of non-metro or rural outreach
+**Search Sections**: Strategy, Business Overview, Retail Expansion, ESG/Inclusion
+**Key Phrases**:
+"Tier 2/3 cities", "semi-urban and rural expansion", "Bharat", "last-mile banking", "financial inclusion", "mobile-first onboarding", "rural BC model", "agent-led presence"
+:x: Don't count urban digital growth or commercial/rural lending without retail intent
+---
+## Step-by-Step
+1. Read the full 10-K inside the context block
+2. Search sections for signals using phrase and section guidance above
+3. Assign a **score from 1–5** for each signal based on the criteria
+4. Justify each score in **<6 lines**, using tight, non-generic, technically specific analysis
+5. Cite section name(s) in parentheses in each rationale
+6. Do **NOT** hallucinate or speculate — use only what's directly stated
+---
+### '[10-K Filing]' starts ###
+${annualReportRawText}
+### '[10-K Filing]' ends ###
+lua
+Copy
+Edit
+## Ideal output format starts ##
+### :bank: [Company Name]
+**1. Digital Transformation / Capability Upgrade**
+Score: [1–5]
+Rationale: [Dense technical justification with citations, e.g., "Company has launched AI-led virtual RM and migrated 60% of core infra to AWS cloud (MD&A, Tech Strategy)"]
+**2. Rising Retail Customer Acquisition / Ops Costs**
+Score: [1–5]
+Rationale: [E.g., "Retail banking OpEx increased 9% YoY due to KYC and compliance onboarding load (Retail Segment, P&L Commentary)"]
+**3. Branch Closures / Consolidation / Phygital Strategy**
+Score: [1–5]
+Rationale: [E.g., "15% reduction in branches in FY24 and rollout of assisted digital kiosks in Tier 1 cities (MD&A, Distribution)"]
+**4. Tier 2/3 or Rural Market Expansion**
+Score: [1–5]
+Rationale: [E.g., "Expanding into 500 rural districts using agent-led model and video onboarding via mobile app (Business Strategy, Inclusion Section)"]
+## Ideal output format ends ##
+**All rationales must be highly information-dense, technically specific, and cite direct sources (in parentheses). Hallucinations or vague summaries are not permitted.**
+Return only the final output format, No introductions, no explanations—just the desired output`;
+};
+
+/**
  * Check if data is stale based on updated_at timestamp
  * @param {string} updatedAt - ISO date string of when data was last updated
  * @param {string} createdAt - ISO date string of when data was created
@@ -34,109 +136,6 @@ function isDataStale(updatedAt, createdAt) {
 }
 
 /**
- * Prompt template for extracting insights from annual report raw text
- * @param {string} companyName - Company name
- * @param {string} annualReportRawText - Raw text extracted from annual report
- * @returns {string} - Formatted prompt
- */
-const INSIGHTS_EXTRACTION_PROMPT = (annualReportRawText) => {
-    return `
-        # 10-K CX + Ops Signal Intelligence Prompt (4-Signal Deep Review)
-Hi ChatGPT, your task is to **analyze the 10-K filing of a company** and extract insights for **4 specific customer-experience signals** using a **1–5 intensity ranking scale** per signal.
-You must:
-- **Read the full context block carefully**
-- For **each of the 4 signals**, assign a score between **1 (none) and 5 (strong, clear signal)**
-- Write a **3–6 line, highly information-dense rationale** per signal
-- Cite the **section name in parentheses** where evidence was found (e.g. *“MD&A”*, *“Strategy”*)
-- **Return only the final output** — no explanations, no summaries
----
-## :white_check_mark: Signal 1: Digital Transformation / Capability Upgrade
-**Goal**: Detect evidence of investment in digital modernization in customer-facing banking.
-**Score Criteria:**
-- **5**: Strong digital infra and CX tooling initiatives underway — cloud, AI, app revamp, embedded journeys
-- **4**: Clear roadmap and partial initiatives around modernization
-- **3**: Generic “digital-first” claims + limited action
-- **2**: Aspirational only, vague or deferred
-- **1**: No digital initiatives mentioned
-**Search Sections**: MD&A, Strategy, Tech, CapEx, Risk Factors
-**Key Phrases**:
-“core banking upgrade”, “digital transformation”, “cloud migration”, “CX modernization”, “AI/automation in service”, “app revamp”, “embedded journeys”, “customer experience platform”
-:x: Don’t count vague digital ambition without evidence
----
-## :moneybag: Signal 2: Rising Retail Customer Acquisition / Ops Costs
-**Goal**: Detect cost pressure in acquiring or servicing retail customers.
-**Score Criteria:**
-- **5**: Multiple clear mentions of CAC/op-ex/service delivery pressure in retail
-- **4**: Retail segment shows operating cost or margin strain
-- **3**: General OpEx increase, not retail-specific
-- **2**: Implied pressure (e.g., inflation), no direct mention
-- **1**: No cost pressure observed
-**Search Sections**: MD&A, Segment Analysis (Retail), P&L commentary, Risk Factors
-**Key Phrases**:
-“rising OpEx”, “customer acquisition cost”, “cost-to-income ratio”, “margin compression”, “onboarding cost pressure”, “compliance burden”
-:x: Don’t count wholesale or non-retail operations
----
-## :department_store: Signal 3: Branch Closures / Consolidation / Phygital Strategy
-**Goal**: Detect physical branch rationalization or shift to digital-hybrid models.
-**Score Criteria:**
-- **5**: Explicit closures + stated phygital strategy underway
-- **4**: Branch optimization in progress; assisted-digital or hybrid models emerging
-- **3**: Aspirational phygital vision without tactical actions
-- **2**: Traditional branch focus; one-off closures
-- **1**: No mention of branch strategy
-**Search Sections**: MD&A, Strategy, Retail Ops, Distribution Strategy
-**Key Phrases**:
-“branch consolidation”, “branch rationalization”, “phygital strategy”, “self-service zones”, “network optimization”, “hub and spoke”, “assisted digital”, “physical footprint reduction”
-:x: Don’t count ATM-only optimization or generic digital growth without branch impact
----
-## :earth_africa: Signal 4: Tier 2/3 or Rural Market Expansion
-**Goal**: Detect efforts to serve non-metro, rural, or underserved markets using digital means.
-**Score Criteria:**
-- **5**: Strong rural/Tier 2-3 push + digital or assisted model (e.g. video onboarding)
-- **4**: Financial inclusion strategy tied to underserved segments via tech
-- **3**: Mentions of semi-urban expansion, no delivery model
-- **2**: Vague growth references with no geography
-- **1**: No mention of non-metro or rural outreach
-**Search Sections**: Strategy, Business Overview, Retail Expansion, ESG/Inclusion
-**Key Phrases**:
-“Tier 2/3 cities”, “semi-urban and rural expansion”, “Bharat”, “last-mile banking”, “financial inclusion”, “mobile-first onboarding”, “rural BC model”, “agent-led presence”
-:x: Don’t count urban digital growth or commercial/rural lending without retail intent
----
-## Step-by-Step
-1. Read the full 10-K inside the context block
-2. Search sections for signals using phrase and section guidance above
-3. Assign a **score from 1–5** for each signal based on the criteria
-4. Justify each score in **<6 lines**, using tight, non-generic, technically specific analysis
-5. Cite section name(s) in parentheses in each rationale
-6. Do **NOT** hallucinate or speculate — use only what’s directly stated
----
-### '[10-K Filing]' starts ###
-${annualReportRawText}
-### '[10-K Filing]' ends ###
-lua
-Copy
-Edit
-## Ideal output format starts ##
-### :bank: [Company Name]
-**1. Digital Transformation / Capability Upgrade**
-Score: [1–5]
-Rationale: [Dense technical justification with citations, e.g., “Company has launched AI-led virtual RM and migrated 60% of core infra to AWS cloud (MD&A, Tech Strategy)”]
-**2. Rising Retail Customer Acquisition / Ops Costs**
-Score: [1–5]
-Rationale: [E.g., “Retail banking OpEx increased 9% YoY due to KYC and compliance onboarding load (Retail Segment, P&L Commentary)”]
-**3. Branch Closures / Consolidation / Phygital Strategy**
-Score: [1–5]
-Rationale: [E.g., “15% reduction in branches in FY24 and rollout of assisted digital kiosks in Tier 1 cities (MD&A, Distribution)”]
-**4. Tier 2/3 or Rural Market Expansion**
-Score: [1–5]
-Rationale: [E.g., “Expanding into 500 rural districts using agent-led model and video onboarding via mobile app (Business Strategy, Inclusion Section)”]
-## Ideal output format ends ##
-**All rationales must be highly information-dense, technically specific, and cite direct sources (in parentheses). Hallucinations or vague summaries are not permitted.**
-Return only the final output format, No introductions, no explanations—just the desired output
-    `;
-};
-
-/**
  * Process insights extraction for a batch of data
  * @param {Array} data - Array of lead data objects
  * @param {Function} logCallback - Callback function to log messages
@@ -160,7 +159,7 @@ export async function processInsightsExtraction(data, logCallback, progressCallb
     // Get configuration from environment
     const openaiApiKey = import.meta.env.VITE_REACT_APP_OPENAI_API_KEY;
     const model = import.meta.env.VITE_REACT_APP_INSIGHT_EXTRACTION_MODEL;
-    const batchSize = parseInt(import.meta.env.VITE_REACT_APP_INSIGHT_BATCH_SIZE || "5");
+    const batchSize = parseInt(import.meta.env.VITE_REACT_APP_INSIGHTS_BATCH_SIZE || "5");
 
     if (!openaiApiKey) {
         throw new Error('OpenAI API key is not set. Please check your environment configuration.');
@@ -204,8 +203,9 @@ export async function processInsightsExtraction(data, logCallback, progressCallb
                 // Get organization data
                 const orgId = row.organization?.id || row['organization.id'];
                 const companyName = row.organization?.name || row['organization.name'] || row.company;
+                const reportUrl = row.annualReportUrl;
 
-                if (!orgId || !companyName) {
+                if (!orgId || !companyName || !reportUrl) {
                     logCallback(`Skipping row ${index + 1}: Missing required data`);
                     skippedCount++;
                     continue;
@@ -233,13 +233,8 @@ export async function processInsightsExtraction(data, logCallback, progressCallb
                     logCallback(`Using existing insights from database for ${companyName}`);
 
                     try {
-                        // Parse the insights JSON string to array
-                        let insights;
-                        if (typeof companyData.financial_insights === 'string') {
-                            insights = JSON.parse(companyData.financial_insights);
-                        } else {
-                            insights = companyData.financial_insights;
-                        }
+                        // Get the insights directly from the database
+                        let insights = companyData.financial_insights;
 
                         // Update the row with the insights
                         processedData[index] = {
@@ -251,33 +246,33 @@ export async function processInsightsExtraction(data, logCallback, progressCallb
                         supabaseHits++;
                         insightsExtracted++;
                     } catch (parseError) {
-                        logCallback(`Error parsing insights JSON for ${companyName}: ${parseError.message}`);
+                        logCallback(`Error handling insights for ${companyName}: ${parseError.message}`);
                         // Fall through to extract insights again
                     }
                 } else {
-                    // Need to extract insights using the annual_report_raw from Supabase
+                    // Need to extract insights
+                    logCallback(`Extracting insights from annual report for ${companyName} using raw text`);
 
-                    // Check if we have the raw report text in Supabase
-                    if (!companyData || !companyData.annual_report_raw) {
-                        logCallback(`No annual report raw text found for ${companyName} in Supabase. Skipping.`);
+                    // Get the raw text from companyData if available, otherwise use row.annualReportRawText
+                    const rawText = companyData?.annual_report_raw || row.annualReportRawText;
 
-                        // Update the row with error status
+                    if (!rawText || rawText.length < 100) {
+                        logCallback(`Insufficient raw text for ${companyName} (${rawText?.length || 0} chars). Skipping insights extraction.`);
+
                         processedData[index] = {
                             ...processedData[index],
-                            insights: [],
-                            insightsSource: 'error',
-                            insightsError: 'No annual report raw text available'
+                            insights: null,
+                            insightsSource: 'skipped_no_text'
                         };
 
                         insightsFailed++;
-                        continue;
+                        continue; // Skip to next row
                     }
 
-                    logCallback(`Extracting insights from annual report for ${companyName} using raw text`);
+                    logCallback(`Using ${rawText.length} characters of raw text for insights extraction`);
 
-                    // Generate prompt using the raw text from annual report
-                    const annualReportRawText = companyData.annual_report_raw;
-                    const prompt = INSIGHTS_EXTRACTION_PROMPT(annualReportRawText);
+                    // Generate prompt for extracting insights - use raw text instead of URL
+                    const prompt = INSIGHTS_EXTRACTION_PROMPT(rawText);
 
                     try {
                         // Call OpenAI to extract insights
@@ -291,28 +286,23 @@ export async function processInsightsExtraction(data, logCallback, progressCallb
                             max_tokens: 800
                         });
 
-                        // Process the response
-                        let insights = [];
+                        // Store the raw response without processing
+                        let insights = null;
                         if (response && response.choices && response.choices.length > 0) {
                             const responseText = response.choices[0].message.content.trim();
 
+                            // Log the full response for debugging
+                            logCallback(`Raw OpenAI response (first 200 chars): ${responseText.substring(0, 200)}`);
+
+                            // Store the entire raw response
+                            insights = responseText;
+                            logCallback(`Stored raw response (${responseText.length} chars) for ${companyName}`);
+
                             if (responseText.startsWith("UNABLE_TO_EXTRACT_INSIGHTS")) {
-                                logCallback(`Unable to extract insights from report for ${companyName}`);
+                                logCallback(`Response indicates extraction failure for ${companyName}`);
                                 insightsFailed++;
                             } else {
-                                // Parse bullet points into array
-                                insights = responseText
-                                    .split('\n')
-                                    .filter(line => line.trim().startsWith('•'))
-                                    .map(line => line.trim().substring(1).trim());
-
-                                logCallback(`Extracted ${insights.length} insights for ${companyName}`);
-
-                                if (insights.length > 0) {
-                                    insightsExtracted++;
-                                } else {
-                                    insightsFailed++;
-                                }
+                                insightsExtracted++;
                             }
 
                             // Track token usage
@@ -332,7 +322,7 @@ export async function processInsightsExtraction(data, logCallback, progressCallb
                         };
 
                         // Save to Supabase if insights were found
-                        if (supabaseAvailable && insights.length > 0) {
+                        if (supabaseAvailable && insights) {
                             await updateSupabaseInsights(
                                 orgId,
                                 companyName,
@@ -346,7 +336,7 @@ export async function processInsightsExtraction(data, logCallback, progressCallb
                         // Update the row with the error
                         processedData[index] = {
                             ...processedData[index],
-                            insights: [],
+                            insights: null,
                             insightsSource: 'error',
                             insightsError: openaiError.message
                         };
@@ -365,7 +355,7 @@ export async function processInsightsExtraction(data, logCallback, progressCallb
                 // Update the row with the error
                 processedData[index] = {
                     ...processedData[index],
-                    insights: [],
+                    insights: null,
                     insightsSource: 'error',
                     insightsError: error.message
                 };
@@ -454,8 +444,8 @@ async function updateSupabaseInsights(orgId, companyName, insights, logCallback)
             logCallback(`Warning: Error checking record existence: ${checkError.message}`);
         }
 
-        // Convert insights array to JSON string if needed
-        const insightsJSON = JSON.stringify(insights);
+        // Store the raw insights string directly
+        // No need for JSON.stringify since we're already storing the raw text
 
         // Current date for updated_at
         const now = new Date().toISOString();
@@ -465,7 +455,7 @@ async function updateSupabaseInsights(orgId, companyName, insights, logCallback)
             const { error: updateError } = await supabase
                 .from('orgs_db')
                 .update({
-                    financial_insights: insightsJSON,
+                    financial_insights: insights, // Store raw string directly
                     updated_at: now
                 })
                 .eq('apollo_org_id', orgId);
@@ -483,7 +473,7 @@ async function updateSupabaseInsights(orgId, companyName, insights, logCallback)
                 .insert({
                     apollo_org_id: orgId,
                     company_name: companyName,
-                    financial_insights: insightsJSON,
+                    financial_insights: insights, // Store raw string directly
                     created_at: now,
                     updated_at: now
                 });

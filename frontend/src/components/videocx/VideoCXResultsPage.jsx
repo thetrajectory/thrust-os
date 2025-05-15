@@ -473,24 +473,6 @@ const VideoCXResultsPage = (props) => {
               <p className="mt-2 text-sm text-gray-500">Showing 10 of {formatNumber(processedData.length)} leads</p>
             )}
           </div>
-
-          {/* Display insights for the first row that has them */}
-          {processedData.some(row => row.insights && row.insights.length > 0) && (
-            <div className="mt-6">
-              <h3 className="text-lg font-semibold mb-3">Sample Insights</h3>
-              <div className="bg-blue-50 p-4 rounded">
-                <h4 className="font-medium text-blue-800 mb-2">
-                  {processedData.find(row => row.insights && row.insights.length > 0)?.company ||
-                    processedData.find(row => row.insights && row.insights.length > 0)?.organization?.name} Insights:
-                </h4>
-                <ul className="space-y-2">
-                  {processedData.find(row => row.insights && row.insights.length > 0)?.insights?.slice(0, 3).map((insight, idx) => (
-                    <li key={idx} className="text-sm text-blue-900">• {insight}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>
