@@ -345,8 +345,8 @@ const VideoCXProcessingPage = ({ csvData, onProcessingComplete, onBack }) => {
         return (
           <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
             <div className="bg-green-50 p-2 rounded">
-              <div className="font-bold text-green-700">{safeNumber(analytics.decisionMakerCount)}</div>
-              <div>Decision Maker</div>
+              <div className="font-bold text-green-700">{safeNumber(analytics.founderCount)}</div>
+              <div>Founder</div>
             </div>
             <div className="bg-blue-50 p-2 rounded">
               <div className="font-bold text-blue-700">{safeNumber(analytics.relevantCount)}</div>

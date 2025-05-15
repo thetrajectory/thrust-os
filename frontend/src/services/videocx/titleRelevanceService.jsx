@@ -1,7 +1,7 @@
 // services/videocx/titleRelevanceService.jsx
 import axios from 'axios';
 
-// Title relevance prompt template for VideoCX
+// Title relevance prompt template for Enterprise Device Benefits Buyer
 const TITLE_RELEVANCE_PROMPT = position =>
   `## Classify Title into Enterprise Device Benefits Buyer Category ##
 Hi ChatGPT, your task is to **analyze a professional title or tagline** and classify it into **only one of the following categories**:
@@ -30,13 +30,13 @@ Use this for **decision-makers or strong influencers** in the following enterpri
 | **IT / End-User Support** | CIO, VP IT, Director End-User Computing, IT Asset Manager |
 | **Procurement / Vendor Mgmt** | Head of Procurement, Strategic Sourcing Lead, Vendor Governance Director |
 | **Ops / Cross-functional** | COO, Chief of Staff, Director of Workplace Ops |
-| **Specialist Tags** | “Total Rewards”, “Compensation”, “Benefits”, “Employee Experience”, “Payroll” — if tied to manager+ scope |
-:white_check_mark: Use only if role is **Director or above**, *or* is a **clearly scoped specialist** in a relevant function (e.g., “Compensation Manager” at 10,000+ org)
-:white_check_mark: "Manager", "Lead", or “Specialist” are valid **only** if:
+| **Specialist Tags** | "Total Rewards", "Compensation", "Benefits", "Employee Experience", "Payroll" — if tied to manager+ scope |
+:white_check_mark: Use only if role is **Director or above**, *or* is a **clearly scoped specialist** in a relevant function (e.g., "Compensation Manager" at 10,000+ org)
+:white_check_mark: "Manager", "Lead", or "Specialist" are valid **only** if:
 - Role is within a top-priority function (HR/Payroll/IT/Comp & Benefits)
 - Title clearly signals implementation responsibility, not just execution
-:x: **Do not include** generalists (e.g., “HR Manager”, “IT Analyst”) unless function is *narrowly focused* and **title + level indicate control or implementation authority**
-:arrow_right: Even if “device leasing” isn’t mentioned, ask:
+:x: **Do not include** generalists (e.g., "HR Manager", "IT Analyst") unless function is *narrowly focused* and **title + level indicate control or implementation authority**
+:arrow_right: Even if "device leasing" isn't mentioned, ask:
 *Does this title suggest the person could reasonably design, approve, or run a modern, scalable employee benefit or device program tied to payroll or IT workflows?*
 If yes → **Relevant**
 ---
@@ -44,12 +44,12 @@ If yes → **Relevant**
 Use for:
 - **All unrelated functions**, such as Sales, Marketing, Customer Success, Legal, Admin, Country Mgmt
 - **All junior roles**, regardless of function
-- **Generic titles** like “Business Head” or “Strategy Lead” unless grounded in a relevant function
+- **Generic titles** like "Business Head" or "Strategy Lead" unless grounded in a relevant function
 - **Broad talent/people/ops roles** with no visible link to payroll, benefits, or asset provisioning
 **Examples:**
 - Sales Director, Marketing VP, HR Executive, Talent Acquisition Lead, Country Manager
 - Product Analyst, Finance Associate, IT Support Executive, Procurement Trainee
-- “Business Strategy Lead” (unless nested in HR/IT/Payroll context)
+- "Business Strategy Lead" (unless nested in HR/IT/Payroll context)
 ---
 ### 'Job Title Input' starts ###
 ${position}
@@ -64,16 +64,17 @@ Return only the final output. No introductions, no explanations—just the outpu
 - **Founders**: Use only when founding roles are explicitly stated (Founder, Co-Founder, etc.)
 - **Relevant**: Titles from HR, Payroll, IT, Ops, and Finance with **director+ seniority** or **narrow specialist scope** (Comp/Benefits/Rewards/etc.)
 - **Irrelevant**: All others—especially generalists, juniors, or roles with no clear authority or linkage to device benefits
-Return only the final output. No introductions, no explanations—just the output.`
+Return only the final output. No introductions, no explanations—just the output.`;
+
 /**
- * Process title relevance for a batch of data for VideoCX engine
+ * Process title relevance for a batch of data
  * @param {Array} data - Array of lead data objects
  * @param {Function} logCallback - Callback function to log messages
  * @param {Function} progressCallback - Callback function to update progress
  * @returns {Promise<Object>} - Object containing processed data and analytics
  */
 export async function processTitleRelevance(data, logCallback, progressCallback) {
-  logCallback("Starting VideoCX Title Relevance Analysis...");
+  logCallback("Starting Title Relevance Analysis...");
 
   // Get configuration from environment
   const apiKey = import.meta.env.VITE_REACT_APP_OPENAI_API_KEY;
@@ -90,7 +91,7 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
   const processedData = [...data];
 
   // Track analytics
-  let decisionMakerCount = 0;
+  let founderCount = 0;
   let relevantCount = 0;
   let irrelevantCount = 0;
   let errorCount = 0;
@@ -127,8 +128,8 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
           };
 
           // Update analytics
-          if (result.data.titleRelevance === 'Decision Maker') {
-            decisionMakerCount++;
+          if (result.data.titleRelevance === 'Founder') {
+            founderCount++;
           } else if (result.data.titleRelevance === 'Relevant') {
             relevantCount++;
           } else if (result.data.titleRelevance === 'Irrelevant') {
@@ -179,8 +180,8 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
   const processingTimeSeconds = (endTimestamp - startTimestamp) / 1000;
 
   // Log analysis summary
-  logCallback(`VideoCX Title Relevance Analysis Complete:`);
-  logCallback(`- Decision Makers: ${decisionMakerCount}`);
+  logCallback(`Title Relevance Analysis Complete:`);
+  logCallback(`- Founders: ${founderCount}`);
   logCallback(`- Relevant: ${relevantCount}`);
   logCallback(`- Irrelevant: ${irrelevantCount}`);
   logCallback(`- Skipped: ${skippedCount}`);
@@ -191,7 +192,7 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
   return {
     data: processedData,
     analytics: {
-      decisionMakerCount,
+      founderCount,
       relevantCount,
       irrelevantCount,
       skippedCount,
@@ -206,7 +207,7 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
 }
 
 /**
- * Process a single title for VideoCX
+ * Process a single title
  * @param {Object} row - Data row to process
  * @param {number} index - Index of the row
  * @param {string} apiKey - OpenAI API key
@@ -248,9 +249,9 @@ async function processSingleTitle(row, index, apiKey, model, logCallback) {
     // After getting the OpenAI response
     console.log("OpenAI raw response:", responseText);
 
-    // Use exact matching for categories
-    if (responseText.toLowerCase() === 'decision maker') {
-      relevance = 'Decision Maker';
+    // Use exact matching for categories with more rigorous checks and handling for founder titles
+    if (responseText.toLowerCase() === 'founder') {
+      relevance = 'Founder';
       score = 3; // Highest priority
     } else if (responseText.toLowerCase() === 'relevant') {
       relevance = 'Relevant';
@@ -259,10 +260,11 @@ async function processSingleTitle(row, index, apiKey, model, logCallback) {
       relevance = 'Irrelevant';
       score = 0; // No priority
     } else {
-      // Handle unexpected responses by looking for partial matches
-      if (responseText.toLowerCase().includes('decision maker')) {
-        relevance = 'Decision Maker';
+      // Handle unexpected responses by looking for partial matches or title patterns
+      if (responseText.toLowerCase().includes('founder') || position.toLowerCase().includes('founder')) {
+        relevance = 'Founder';
         score = 3;
+        logCallback(`Special case: Position "${position}" containing "founder" classified as Founder`);
       } else if (responseText.toLowerCase().includes('relevant')) {
         relevance = 'Relevant';
         score = 2;
@@ -300,7 +302,7 @@ async function processSingleTitle(row, index, apiKey, model, logCallback) {
 }
 
 /**
- * Call OpenAI API to analyze a position for VideoCX
+ * Call OpenAI API to analyze a position
  * @param {string} position - Position to analyze
  * @param {string} apiKey - OpenAI API key
  * @param {string} model - OpenAI model to use
@@ -346,7 +348,7 @@ async function callOpenAIAPI(position, apiKey, model) {
     const completionTokens = response.data.usage?.completion_tokens || 0;
     const totalTokens = response.data.usage?.total_tokens || 0;
 
-    console.log("VideoCX Title Relevance Finished");
+    console.log("Title Relevance Finished");
     return {
       completion,
       promptTokens,

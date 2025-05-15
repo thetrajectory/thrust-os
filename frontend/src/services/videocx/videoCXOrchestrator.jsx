@@ -4,11 +4,11 @@ import storageUtils from '../../utils/storageUtils';
 import annualReportTextExtractionService from './annualReportTextExtractionService';
 import apolloEnrichmentService from './apolloEnrichmentService';
 import fetchAnnualReportService from './fetchAnnualReportService';
+import headcountFilterService from './headcountFilterService';
+import industryRelevanceService from './industryRelevanceService';
 import insightExtractionService from './insightExtractionService';
 import publicCompanyService from './publicCompanyService';
 import titleRelevanceService from './titleRelevanceService';
-import industryRelevanceService from './industryRelevanceService';
-import headcountFilterService from './headcountFilterService';
 
 /**
  * Orchestrates the entire VideoCX lead enrichment pipeline
@@ -480,10 +480,10 @@ class VideoCXOrchestrator {
                 case 'apolloEnrichment':
                     processorFunction = apolloEnrichmentService.processApolloEnrichment;
                     break;
-                case 'headcountFilter':                                             
+                case 'headcountFilter':
                     processorFunction = headcountFilterService.processHeadcountFilter;
                     break;
-                case 'industryRelevance':                                           
+                case 'industryRelevance':
                     processorFunction = industryRelevanceService.processIndustryRelevance;
                     break;
                 case 'publicCompanyFilter':
@@ -615,18 +615,18 @@ class VideoCXOrchestrator {
 
         switch (stepId) {
             case 'titleRelevance':
-                // Add tags for irrelevant titles
+                // Add tags for irrelevant titles only, let Founder and Relevant pass through
                 this.processedData = this.processedData.map(row => {
                     // Skip if already tagged
                     if (row.relevanceTag) {
                         return row;
                     }
 
-                    if (row.titleRelevance === 'Decision Maker' || row.titleRelevance === 'Relevant') {
+                    if (row.titleRelevance === 'Founder' || row.titleRelevance === 'Relevant') {
                         untaggedCount++;
-                        return row; // No tag
+                        return row; // No tag for Founder or Relevant
                     } else {
-                        // Apply tag for filtered-out rows 
+                        // Apply tag ONLY for Irrelevant titles
                         taggedCount++;
                         filterReason[row.titleRelevance || 'Unknown'] =
                             (filterReason[row.titleRelevance || 'Unknown'] || 0) + 1;
@@ -638,7 +638,7 @@ class VideoCXOrchestrator {
                     }
                 });
 
-                this.addLog(`Title relevance filtering: ${untaggedCount} rows untagged (Decision Maker/Relevant), ${taggedCount} tagged with "Irrelevant".`);
+                this.addLog(`Title relevance filtering: ${untaggedCount} rows untagged (Founder/Relevant), ${taggedCount} tagged with "Irrelevant".`);
                 break;
 
             case 'publicCompanyFilter':
