@@ -622,7 +622,7 @@ class VideoCXOrchestrator {
                         return row;
                     }
 
-                    if (row.titleRelevance === 'Founder' || row.titleRelevance === 'Relevant') {
+                    if (row.titleRelevance === 'Founder' || row.titleRelevance === 'Relevant' || row.titleRelevance === 'founder' || row.titleRelevance === 'relevant') {
                         untaggedCount++;
                         return row; // No tag for Founder or Relevant
                     } else {
