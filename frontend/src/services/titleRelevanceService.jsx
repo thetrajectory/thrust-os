@@ -248,12 +248,11 @@ async function processSingleTitle(row, index, apiKey, model, logCallback) {
   try {
     logCallback(`Analyzing position: ${position}`);
 
-    // Call OpenAI API
+    // Call OpenAI API for all positions
     const result = await callOpenAIAPI(position, apiKey, model);
-
     const tokenUsage = result.totalTokens || 0;
 
-    // Extract and normalize the response
+    // Extract the response
     const responseText = result.completion.trim();
 
     // Log the raw response
@@ -263,100 +262,44 @@ async function processSingleTitle(row, index, apiKey, model, logCallback) {
     // Determine relevance category based on normalized response
     let relevance;
     let score;
+    let classificationMethod = 'api-response';
 
-    // EXACT TEXT MATCH (case-insensitive)
-    if (responseText.toLowerCase() === 'founder') {
+    // Case-insensitive exact match
+    const responseLower = responseText.toLowerCase();
+
+    if (responseLower === 'founder') {
       relevance = 'Founder';
       score = 3; // Highest priority
-    } else if (responseText.toLowerCase() === 'relevant') {
+    } else if (responseLower === 'relevant') {
       relevance = 'Relevant';
       score = 2; // Medium priority
-    } else if (responseText.toLowerCase() === 'irrelevant') {
+    } else if (responseLower === 'irrelevant') {
       relevance = 'Irrelevant';
       score = 0; // No priority
     } else {
-      // Handle unexpected responses by looking for partial matches
-      if (responseText.toLowerCase().includes('founder')) {
+      // If no exact match, check for partial matches
+      classificationMethod = 'partial-match';
+
+      if (responseLower.includes('founder')) {
         relevance = 'Founder';
         score = 3;
-      } else if (responseText.toLowerCase().includes('relevant') && !responseText.toLowerCase().includes('irrelevant')) {
+      } else if (responseLower.includes('relevant') && !responseLower.includes('irrelevant')) {
         relevance = 'Relevant';
         score = 2;
-      } else if (responseText.toLowerCase().includes('irrelevant')) {
+      } else if (responseLower.includes('irrelevant')) {
         relevance = 'Irrelevant';
         score = 0;
       } else {
-        // SECONDARY FALLBACK: If no keywords in response, analyze the position
-        const positionLower = position.toLowerCase();
-
-        // Check for clear founder indicators
-        if (
-          positionLower.includes('founder') ||
-          positionLower.includes('co-founder') ||
-          positionLower.includes('founding')
-        ) {
-          relevance = 'Founder';
-          score = 3;
-          logCallback(`Position-based classification: "${position}" -> Founder`);
-        }
-        // Check for C-suite and director+ positions in relevant departments
-        else if (
-          (
-            (positionLower.includes('ceo') ||
-              positionLower.includes('cfo') ||
-              positionLower.includes('cio') ||
-              positionLower.includes('cto') ||
-              positionLower.includes('president') ||
-              positionLower.includes('chief') ||
-              positionLower.includes('director') ||
-              positionLower.includes('head of') ||
-              positionLower.includes('vp ') ||
-              positionLower.includes('vice president'))
-            &&
-            (positionLower.includes('hr') ||
-              positionLower.includes('human resource') ||
-              positionLower.includes('people') ||
-              positionLower.includes('finance') ||
-              positionLower.includes('payroll') ||
-              positionLower.includes('it') ||
-              positionLower.includes('information technology') ||
-              positionLower.includes('procurement') ||
-              positionLower.includes('operations') ||
-              positionLower.includes('benefits') ||
-              positionLower.includes('compensation'))
-          )
-        ) {
-          relevance = 'Relevant';
-          score = 2;
-          logCallback(`Position-based classification: "${position}" -> Relevant (senior role in relevant department)`);
-        }
-        // Check for specialized roles in relevant areas
-        else if (
-          (positionLower.includes('benefits') ||
-            positionLower.includes('compensation') ||
-            positionLower.includes('total rewards') ||
-            positionLower.includes('payroll') ||
-            positionLower.includes('it asset')) &&
-          (positionLower.includes('manager') ||
-            positionLower.includes('lead') ||
-            positionLower.includes('specialist') ||
-            positionLower.includes('administrator'))
-        ) {
-          relevance = 'Relevant';
-          score = 2;
-          logCallback(`Position-based classification: "${position}" -> Relevant (specialized role)`);
-        }
-        // All other positions default to Irrelevant
-        else {
-          relevance = 'Irrelevant';
-          score = 0;
-          logCallback(`Position-based classification: "${position}" -> Irrelevant (default)`);
-        }
+        // Default case for completely unexpected responses
+        relevance = 'Irrelevant';
+        score = 0;
+        classificationMethod = 'default-fallback';
+        logCallback(`Warning: Completely unexpected response "${responseText}" for position "${position}". Defaulting to Irrelevant.`);
       }
 
-      // Log warning for unexpected responses
-      if (!responseText.toLowerCase().match(/^(founder|relevant|irrelevant)$/)) {
-        logCallback(`Warning: Unexpected response format "${responseText}" for position "${position}". Defaulted to ${relevance}.`);
+      // Log warning for non-exact match responses
+      if (!responseLower.match(/^(founder|relevant|irrelevant)$/)) {
+        logCallback(`Warning: Unexpected response format "${responseText}" for position "${position}". Interpreted as ${relevance}.`);
       }
     }
 
@@ -366,17 +309,20 @@ async function processSingleTitle(row, index, apiKey, model, logCallback) {
         titleRelevance: relevance,
         titleRelevanceScore: score,
         originalResponse: responseText,
+        classificationMethod: classificationMethod,
         customPrompt: TITLE_RELEVANCE_PROMPT(position)
       },
       tokens: tokenUsage
     };
   } catch (error) {
     console.error(`Failed to process title: ${error.message}`);
-    // Instead of throwing, return a default value
+    logCallback(`Error processing item: ${error.message}`);
+
+    // Return ERROR status instead of default classification
     return {
       index,
       data: {
-        titleRelevance: 'Irrelevant',
+        titleRelevance: 'ERROR',
         titleRelevanceScore: 0,
         titleRelevanceError: error.message
       },
