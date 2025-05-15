@@ -12,7 +12,7 @@ import LandingPage from './components/LandingPage';
 // Import engine-specific components
 import OrchestratedProcessingPage from './components/OrchestratedProcessingPage'; // Incommon
 import ResultsPage from './components/ResultsPage'; // Incommon
-import VideoCXProcessingPage from './components/videocx/videoCXProcessingPage'; // VideoCX
+import VideoCXProcessingPage from './components/videocx/VideoCXProcessingPage'; // VideoCX
 import VideoCXResultsPage from './components/videocx/VideoCXResultsPage'; // VideoCX
 
 // Import services
