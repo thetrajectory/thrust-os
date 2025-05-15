@@ -75,8 +75,6 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
   // Get configuration from environment
   const apiKey = import.meta.env.VITE_REACT_APP_OPENAI_API_KEY;
   const model = import.meta.env.VITE_REACT_APP_TITLE_RELEVANCE_MODEL;
-
-  // Note: We'll still keep batches for logging purposes, but process sequentially within each batch
   const batchSize = parseInt(import.meta.env.VITE_REACT_APP_TITLE_RELEVANCE_BATCH_SIZE || "100");
 
   const startTimestamp = Date.now();
@@ -85,8 +83,8 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
     throw new Error('OpenAI API key is not set. Please check your environment configuration.');
   }
 
-  // Initialize result array with original data
-  const processedData = [...data];
+  // Initialize result array with original data - MAKE A DEEP COPY
+  const processedData = JSON.parse(JSON.stringify(data));
 
   // Track analytics
   let founderCount = 0;
@@ -96,12 +94,15 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
   let tokensUsed = 0;
   let skippedCount = 0;
 
-  // Process in batches, but sequentially within each batch
+  // Process in batches
   for (let i = 0; i < data.length; i += batchSize) {
     const currentBatchSize = Math.min(batchSize, data.length - i);
     logCallback(`Processing batch ${Math.floor(i / batchSize) + 1}: items ${i + 1} to ${i + currentBatchSize}`);
 
-    // Process each item in the batch SEQUENTIALLY
+    // Store batch results
+    const batchResults = [];
+
+    // Process items sequentially
     for (let j = 0; j < currentBatchSize; j++) {
       const index = i + j;
       const row = data[index];
@@ -115,14 +116,11 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
       }
 
       try {
-        // Process single title and await its completion before moving to next
+        // Process one item at a time
         const result = await processSingleTitle(row, index, apiKey, model, logCallback);
 
-        // Update the result in the processedData array
-        processedData[index] = {
-          ...processedData[index],
-          ...result.data
-        };
+        // Store result without immediately updating processedData
+        batchResults.push(result);
 
         // Update analytics
         if (result.data.titleRelevance === 'Founder') {
@@ -145,23 +143,31 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
         logCallback(`Error processing item ${index + 1}: ${error.message}`);
         errorCount++;
 
-        // Add error info to the processed data
-        processedData[index] = {
-          ...processedData[index],
-          titleRelevance: 'ERROR',
-          titleRelevanceScore: 0,
-          titleRelevanceError: error.message
-        };
+        // Store error result
+        batchResults.push({
+          index,
+          data: {
+            titleRelevance: 'ERROR',
+            titleRelevanceScore: 0,
+            titleRelevanceError: error.message
+          }
+        });
       }
 
-      // Update progress regardless of success or failure
+      // Update progress
       progressCallback((index + 1) / data.length * 100);
-
-      // Optional: Add a small delay between individual items if needed
-      // await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    // Add a small delay between batches if needed
+    // Now update all processed data at once after batch completion
+    // This maintains the behavior more similar to the original code
+    for (const result of batchResults) {
+      processedData[result.index] = {
+        ...processedData[result.index],
+        ...result.data
+      };
+    }
+
+    // Add a small delay between batches
     if (i + currentBatchSize < data.length) {
       logCallback("Pausing briefly before next batch...");
       await new Promise(resolve => setTimeout(resolve, 500));
