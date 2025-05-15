@@ -52,7 +52,7 @@ Use for:
 - “Business Strategy Lead” (unless nested in HR/IT/Payroll context)
 ---
 ### 'Job Title Input' starts ###
-<Position>
+${position}
 ### 'Job Title Input' ends ###
 ---
 ## Ideal output format starts ##
