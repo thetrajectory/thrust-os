@@ -256,14 +256,15 @@ async function processSingleTitle(row, index, apiKey, model, logCallback) {
     // Extract and normalize the response
     const responseText = result.completion.trim();
 
-    // Exact match to one of the three valid categories
+    // Log the raw response
+    logCallback(`Raw model response: "${responseText}"`);
+    console.log("OpenAI raw response:", responseText);
+
+    // Determine relevance category based on normalized response
     let relevance;
     let score;
 
-    // After getting the OpenAI response
-    console.log("OpenAI raw response:", responseText);
-
-    // Use exact matching for categories
+    // EXACT TEXT MATCH (case-insensitive)
     if (responseText.toLowerCase() === 'founder') {
       relevance = 'Founder';
       score = 3; // Highest priority
@@ -278,15 +279,85 @@ async function processSingleTitle(row, index, apiKey, model, logCallback) {
       if (responseText.toLowerCase().includes('founder')) {
         relevance = 'Founder';
         score = 3;
-      } else if (responseText.toLowerCase().includes('relevant')) {
+      } else if (responseText.toLowerCase().includes('relevant') && !responseText.toLowerCase().includes('irrelevant')) {
         relevance = 'Relevant';
         score = 2;
-      } else {
-        // Default to Irrelevant for any other response
+      } else if (responseText.toLowerCase().includes('irrelevant')) {
         relevance = 'Irrelevant';
         score = 0;
+      } else {
+        // SECONDARY FALLBACK: If no keywords in response, analyze the position
+        const positionLower = position.toLowerCase();
+
+        // Check for clear founder indicators
+        if (
+          positionLower.includes('founder') ||
+          positionLower.includes('co-founder') ||
+          positionLower.includes('founding')
+        ) {
+          relevance = 'Founder';
+          score = 3;
+          logCallback(`Position-based classification: "${position}" -> Founder`);
+        }
+        // Check for C-suite and director+ positions in relevant departments
+        else if (
+          (
+            (positionLower.includes('ceo') ||
+              positionLower.includes('cfo') ||
+              positionLower.includes('cio') ||
+              positionLower.includes('cto') ||
+              positionLower.includes('president') ||
+              positionLower.includes('chief') ||
+              positionLower.includes('director') ||
+              positionLower.includes('head of') ||
+              positionLower.includes('vp ') ||
+              positionLower.includes('vice president'))
+            &&
+            (positionLower.includes('hr') ||
+              positionLower.includes('human resource') ||
+              positionLower.includes('people') ||
+              positionLower.includes('finance') ||
+              positionLower.includes('payroll') ||
+              positionLower.includes('it') ||
+              positionLower.includes('information technology') ||
+              positionLower.includes('procurement') ||
+              positionLower.includes('operations') ||
+              positionLower.includes('benefits') ||
+              positionLower.includes('compensation'))
+          )
+        ) {
+          relevance = 'Relevant';
+          score = 2;
+          logCallback(`Position-based classification: "${position}" -> Relevant (senior role in relevant department)`);
+        }
+        // Check for specialized roles in relevant areas
+        else if (
+          (positionLower.includes('benefits') ||
+            positionLower.includes('compensation') ||
+            positionLower.includes('total rewards') ||
+            positionLower.includes('payroll') ||
+            positionLower.includes('it asset')) &&
+          (positionLower.includes('manager') ||
+            positionLower.includes('lead') ||
+            positionLower.includes('specialist') ||
+            positionLower.includes('administrator'))
+        ) {
+          relevance = 'Relevant';
+          score = 2;
+          logCallback(`Position-based classification: "${position}" -> Relevant (specialized role)`);
+        }
+        // All other positions default to Irrelevant
+        else {
+          relevance = 'Irrelevant';
+          score = 0;
+          logCallback(`Position-based classification: "${position}" -> Irrelevant (default)`);
+        }
       }
-      logCallback(`Warning: Unexpected response format "${responseText}" for position "${position}". Defaulting to ${relevance}.`);
+
+      // Log warning for unexpected responses
+      if (!responseText.toLowerCase().match(/^(founder|relevant|irrelevant)$/)) {
+        logCallback(`Warning: Unexpected response format "${responseText}" for position "${position}". Defaulted to ${relevance}.`);
+      }
     }
 
     return {
