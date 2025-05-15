@@ -96,12 +96,12 @@ class VideoCXReportsService {
 
           // Additional fields
           linkedin_profile_photo_url: row.linkedin_profile_photo_url || row.person?.photo_url || row['person.photo_url'] || '',
-          
+
           // VideoCX-specific fields
           company_type: row.companyType || '',
           annual_report_pdf: row.annualReportUrl || '',
           financial_insights: Array.isArray(row.insights) ? row.insights.join('\n') : (row.insights || ''),
-          
+
           // Include any other VideoCX-specific fields
           isPublicCompany: row.isPublicCompany !== undefined ? row.isPublicCompany.toString() : '',
           annualReportStatus: row.annualReportStatus || '',
@@ -235,6 +235,8 @@ class VideoCXReportsService {
     const pipeline = [
       'titleRelevance',
       'apolloEnrichment',
+      'headcountFilter',
+      'industryRelevance',
       'publicCompanyFilter',
       'fetchAnnualReports',
       'insightsExtraction'
@@ -244,6 +246,8 @@ class VideoCXReportsService {
     const stepNameMap = {
       'titleRelevance': 'Title Relevance Analysis',
       'apolloEnrichment': 'Apollo Lead Enrichment',
+      'headcountFilter': 'Headcount Filtering',
+      'industryRelevance': 'Industry Relevance',
       'publicCompanyFilter': 'Public Company Detection',
       'fetchAnnualReports': 'Fetch Annual Reports',
       'insightsExtraction': 'Insights Extraction'
@@ -253,6 +257,8 @@ class VideoCXReportsService {
     const apiSourceMap = {
       'titleRelevance': 'GPT',
       'apolloEnrichment': 'Apollo',
+      'headcountFilter': 'Internal Filter',
+      'industryRelevance': 'Internal Filter',
       'publicCompanyFilter': 'GPT',
       'fetchAnnualReports': 'Serper/GPT',
       'insightsExtraction': 'GPT'
@@ -324,9 +330,13 @@ class VideoCXReportsService {
 
       // Get step-specific metrics
       let specificMetrics = "";
-      
+
       if (stepId === 'titleRelevance') {
         specificMetrics = `Decision Makers: ${analytics.decisionMakerCount || 0}, Relevant: ${analytics.relevantCount || 0}, Irrelevant: ${analytics.irrelevantCount || 0}`;
+      } else if (stepId === 'headcountFilter') {
+        specificMetrics = `Sufficient: ${analytics.sufficientHeadcount || 0}, Low: ${analytics.lowHeadcount || 0}, No Data: ${analytics.noHeadcountData || 0}`;
+      } else if (stepId === 'industryRelevance') {
+        specificMetrics = `Financial: ${analytics.relevantCount || 0}, Other: ${analytics.irrelevantCount || 0}, No Data: ${analytics.noIndustryData || 0}`;
       } else if (stepId === 'publicCompanyFilter') {
         specificMetrics = `Public: ${analytics.publicCount || 0}, Private: ${analytics.privateCount || 0}`;
       } else if (stepId === 'fetchAnnualReports') {

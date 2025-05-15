@@ -148,6 +148,16 @@ const VideoCXProcessingPage = ({ csvData, onProcessingComplete, onBack }) => {
       description: 'Fetching detailed person and company information'
     },
     {
+      id: 'headcountFilter',
+      name: 'Headcount Filtering',
+      description: 'Filtering companies with less than 100 employees'
+    },
+    {
+      id: 'industryRelevance',
+      name: 'Industry Relevance',
+      description: 'Filtering for financial services industry relevance'
+    },
+    {
       id: 'publicCompanyFilter',
       name: 'Public Company Detection',
       description: 'Determining if the company is publicly traded'
@@ -252,10 +262,10 @@ const VideoCXProcessingPage = ({ csvData, onProcessingComplete, onBack }) => {
   const handleViewResults = () => {
     // Get the FULL processed data regardless of completion state
     const allData = videoCXOrchestrator.processedData || loadedCsvData;
-  
+
     // Save processed data
     storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.VIDEOCX_PROCESSED, allData);
-  
+
     // Add termination analytics if cancelled
     if (isCancelling) {
       const terminationAnalytics = {
@@ -264,13 +274,13 @@ const VideoCXProcessingPage = ({ csvData, onProcessingComplete, onBack }) => {
         completedSteps: videoCXOrchestrator.currentStepIndex,
         totalSteps: videoCXOrchestrator.pipeline.length
       };
-  
+
       storageUtils.saveToStorage(
         storageUtils.STORAGE_KEYS.VIDEOCX_ANALYTICS,
         { ...analytics, termination: terminationAnalytics }
       );
     }
-  
+
     // Pass data back to parent component with explicit client type
     if (onProcessingComplete) {
       onProcessingComplete(allData, 'Video CX'); // Explicitly pass client type
@@ -357,12 +367,48 @@ const VideoCXProcessingPage = ({ csvData, onProcessingComplete, onBack }) => {
               <div>From Supabase</div>
             </div>
             <div className="bg-blue-50 p-2 rounded">
-            <div className="font-bold text-blue-700">{safeNumber(analytics.apolloFetches)}</div>
+              <div className="font-bold text-blue-700">{safeNumber(analytics.apolloFetches)}</div>
               <div>From Apollo</div>
             </div>
             <div className="bg-red-50 p-2 rounded">
               <div className="font-bold text-red-700">{safeNumber(analytics.errorCount)}</div>
               <div>Errors</div>
+            </div>
+          </div>
+        );
+
+      case 'headcountFilter':
+        return (
+          <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+            <div className="bg-green-50 p-2 rounded">
+              <div className="font-bold text-green-700">{safeNumber(analytics.sufficientHeadcount)}</div>
+              <div>Sufficient</div>
+            </div>
+            <div className="bg-red-50 p-2 rounded">
+              <div className="font-bold text-red-700">{safeNumber(analytics.lowHeadcount)}</div>
+              <div>Low Headcount</div>
+            </div>
+            <div className="bg-gray-50 p-2 rounded">
+              <div className="font-bold text-gray-700">{safeNumber(analytics.noHeadcountData)}</div>
+              <div>No Data</div>
+            </div>
+          </div>
+        );
+
+      case 'industryRelevance':
+        return (
+          <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+            <div className="bg-green-50 p-2 rounded">
+              <div className="font-bold text-green-700">{safeNumber(analytics.relevantCount)}</div>
+              <div>Financial Sector</div>
+            </div>
+            <div className="bg-red-50 p-2 rounded">
+              <div className="font-bold text-red-700">{safeNumber(analytics.irrelevantCount)}</div>
+              <div>Other Industries</div>
+            </div>
+            <div className="bg-gray-50 p-2 rounded">
+              <div className="font-bold text-gray-700">{safeNumber(analytics.noIndustryData)}</div>
+              <div>No Data</div>
             </div>
           </div>
         );

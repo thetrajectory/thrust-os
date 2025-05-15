@@ -24,6 +24,11 @@ const VideoCXResultsPage = (props) => {
     decisionMakerCount: 0,
     relevantCount: 0,
     irrelevantCount: 0,
+    sufficientHeadcount: 0,
+    lowHeadcount: 0,
+    noHeadcountData: 0,
+    financeIndustryCount: 0,
+    otherIndustriesCount: 0,
     publicCompanyCount: 0,
     privateCompanyCount: 0,
     withInsightsCount: 0,
@@ -160,13 +165,23 @@ const VideoCXResultsPage = (props) => {
     const decisionMakerCount = processedData.filter(row => row.titleRelevance === 'Decision Maker').length;
     const relevantCount = processedData.filter(row => row.titleRelevance === 'Relevant').length;
     const irrelevantCount = processedData.filter(row => row.titleRelevance === 'Irrelevant').length;
-    
+
+    // Headcount stats
+    const sufficientHeadcount = processedData.filter(row => !row.relevanceTag || (row.relevanceTag !== 'Low Headcount' && row.relevanceTag !== 'No Headcount Data')).length;
+    const lowHeadcount = processedData.filter(row => row.relevanceTag === 'Low Headcount').length;
+    const noHeadcountData = processedData.filter(row => row.relevanceTag === 'No Headcount Data').length;
+
+    // Industry stats
+    const financeIndustryCount = processedData.filter(row => !row.relevanceTag || row.relevanceTag !== 'Irrelevant Industry').length;
+    const otherIndustriesCount = processedData.filter(row => row.relevanceTag === 'Irrelevant Industry').length;
+
+
     const publicCompanyCount = processedData.filter(row => row.isPublicCompany === true).length;
     const privateCompanyCount = processedData.filter(row => row.isPublicCompany === false).length;
-    
+
     const withInsightsCount = processedData.filter(row => row.insights && row.insights.length > 0).length;
     const withoutInsightsCount = processedData.filter(row => !row.insights || row.insights.length === 0).length;
-    
+
     const taggedCount = processedData.filter(row => row.relevanceTag).length;
     const untaggedCount = processedData.filter(row => !row.relevanceTag).length;
 
@@ -175,6 +190,11 @@ const VideoCXResultsPage = (props) => {
       decisionMakerCount,
       relevantCount,
       irrelevantCount,
+      sufficientHeadcount,
+      lowHeadcount,
+      noHeadcountData,
+      financeIndustryCount,
+      otherIndustriesCount,
       publicCompanyCount,
       privateCompanyCount,
       withInsightsCount,
@@ -216,15 +236,15 @@ const VideoCXResultsPage = (props) => {
   // Handle download functions
   const handleDownloadData = () => {
     let dataToDownload = processedData;
-  
+
     if (!dataToDownload || dataToDownload.length === 0) {
       dataToDownload = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.VIDEOCX_PROCESSED);
     }
-  
+
     if (!dataToDownload || dataToDownload.length === 0) {
       dataToDownload = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.CSV_DATA);
     }
-  
+
     if (dataToDownload && dataToDownload.length > 0) {
       const result = reportsService.downloadProcessedDataCsv(dataToDownload, 'videocx_processed_data.csv');
       if (!result.success) {
@@ -236,7 +256,7 @@ const VideoCXResultsPage = (props) => {
       alert('No data available to download.');
     }
   };
-  
+
   const handleDownloadReport = () => {
     // Retrieve all necessary data from storage
     const storedProcessedData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.VIDEOCX_PROCESSED) || [];
@@ -245,7 +265,7 @@ const VideoCXResultsPage = (props) => {
     const storedLogs = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.VIDEOCX_LOGS) || [];
     const storedStepStatus = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.VIDEOCX_PROCESS_STATUS) || {};
     const originalCsvData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.CSV_DATA) || [];
-  
+
     const enrichmentState = {
       processedData: storedProcessedData,
       originalCount: originalCsvData.length || originalCount,
@@ -262,7 +282,7 @@ const VideoCXResultsPage = (props) => {
         'insightsExtraction'
       ]
     };
-  
+
     try {
       const result = reportsService.downloadReportsCsv(enrichmentState, 'videocx_analytics_report.csv');
       if (!result.success) {
@@ -275,7 +295,7 @@ const VideoCXResultsPage = (props) => {
       alert(`Error downloading report: ${error.message}`);
     }
   };
-  
+
 
   const handleBack = () => {
     navigate('/videocx/processing');
@@ -308,6 +328,8 @@ const VideoCXResultsPage = (props) => {
               <p><span className="font-medium">Total Leads Processed:</span> {formatNumber(stats.totalLeads)}</p>
               <p><span className="font-medium">Decision Makers:</span> {formatNumber(stats.decisionMakerCount)}</p>
               <p><span className="font-medium">Relevant Titles:</span> {formatNumber(stats.relevantCount)}</p>
+              <p><span className="font-medium">Companies with 100+ Employees:</span> {formatNumber(stats.sufficientHeadcount)}</p>
+              <p><span className="font-medium">Financial Services Companies:</span> {formatNumber(stats.financeIndustryCount)}</p>
               <p><span className="font-medium">Public Companies:</span> {formatNumber(stats.publicCompanyCount)}</p>
               <p><span className="font-medium">Companies with Insights:</span> {formatNumber(stats.withInsightsCount)}</p>
               <p><span className="font-medium">Final Selected Leads:</span> {formatNumber(stats.finalCount)}</p>
@@ -398,11 +420,10 @@ const VideoCXResultsPage = (props) => {
                       {row.first_name || row.person?.first_name || ''} {row.last_name || row.person?.last_name || ''}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        row.titleRelevance === 'Decision Maker' ? 'bg-blue-100 text-blue-800' :
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${row.titleRelevance === 'Decision Maker' ? 'bg-blue-100 text-blue-800' :
                         row.titleRelevance === 'Relevant' ? 'bg-green-100 text-green-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
+                          'bg-red-100 text-red-800'
+                        }`}>
                         {row.titleRelevance || 'Unknown'}
                       </span>
                     </td>
@@ -452,14 +473,14 @@ const VideoCXResultsPage = (props) => {
               <p className="mt-2 text-sm text-gray-500">Showing 10 of {formatNumber(processedData.length)} leads</p>
             )}
           </div>
-          
+
           {/* Display insights for the first row that has them */}
           {processedData.some(row => row.insights && row.insights.length > 0) && (
             <div className="mt-6">
               <h3 className="text-lg font-semibold mb-3">Sample Insights</h3>
               <div className="bg-blue-50 p-4 rounded">
                 <h4 className="font-medium text-blue-800 mb-2">
-                  {processedData.find(row => row.insights && row.insights.length > 0)?.company || 
+                  {processedData.find(row => row.insights && row.insights.length > 0)?.company ||
                     processedData.find(row => row.insights && row.insights.length > 0)?.organization?.name} Insights:
                 </h4>
                 <ul className="space-y-2">

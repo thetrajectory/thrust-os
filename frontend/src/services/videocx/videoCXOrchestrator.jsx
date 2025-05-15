@@ -7,7 +7,8 @@ import fetchAnnualReportService from './fetchAnnualReportService';
 import insightExtractionService from './insightExtractionService';
 import publicCompanyService from './publicCompanyService';
 import titleRelevanceService from './titleRelevanceService';
-
+import industryRelevanceService from './industryRelevanceService';
+import headcountFilterService from './headcountFilterService';
 
 /**
  * Orchestrates the entire VideoCX lead enrichment pipeline
@@ -26,6 +27,8 @@ class VideoCXOrchestrator {
         this.pipeline = [
             'titleRelevance',
             'apolloEnrichment',
+            'headcountFilter',
+            'industryRelevance',
             'publicCompanyFilter',
             'fetchAnnualReports',
             'extractAnnualReportText',
@@ -36,6 +39,8 @@ class VideoCXOrchestrator {
         this.stepDescriptions = {
             titleRelevance: 'Evaluating job titles to classify as Decision Maker, Relevant, or Irrelevant',
             apolloEnrichment: 'Fetching detailed person and company information (only for Decision Maker/Relevant)',
+            headcountFilter: 'Filtering companies with less than 100 employees',
+            industryRelevance: 'Filtering for financial services industry relevance',
             publicCompanyFilter: 'Determining if the company is publicly traded',
             fetchAnnualReports: 'Retrieving annual financial reports (10-K or Annual)',
             extractAnnualReportText: 'Extracting raw text from annual reports',
@@ -206,9 +211,11 @@ class VideoCXOrchestrator {
         const names = {
             titleRelevance: 'Title Relevance Analysis',
             apolloEnrichment: 'Apollo Lead Enrichment',
+            headcountFilter: 'Headcount Filtering',
+            industryRelevance: 'Industry Relevance',
             publicCompanyFilter: 'Public Company Detection',
             fetchAnnualReports: 'Fetch Annual Reports',
-            extractAnnualReportText: 'Annual Report Text Extraction',  // Add this new step
+            extractAnnualReportText: 'Annual Report Text Extraction',
             insightsExtraction: 'Insights Extraction'
         };
 
@@ -472,6 +479,12 @@ class VideoCXOrchestrator {
                     break;
                 case 'apolloEnrichment':
                     processorFunction = apolloEnrichmentService.processApolloEnrichment;
+                    break;
+                case 'headcountFilter':                                             
+                    processorFunction = headcountFilterService.processHeadcountFilter;
+                    break;
+                case 'industryRelevance':                                           
+                    processorFunction = industryRelevanceService.processIndustryRelevance;
                     break;
                 case 'publicCompanyFilter':
                     processorFunction = publicCompanyService.processPublicCompanyFilter;
