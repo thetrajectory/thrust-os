@@ -67,7 +67,7 @@ Return only the final output. No introductions, no explanations—just the outpu
 Return only the final output. No introductions, no explanations—just the output.`;
 
 /**
- * Process title relevance for a batch of data
+ * Process title relevance for a batch of data sequentially
  * @param {Array} data - Array of lead data objects
  * @param {Function} logCallback - Callback function to log messages
  * @param {Function} progressCallback - Callback function to update progress
@@ -79,6 +79,8 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
   // Get configuration from environment
   const apiKey = import.meta.env.VITE_REACT_APP_OPENAI_API_KEY;
   const model = import.meta.env.VITE_REACT_APP_TITLE_RELEVANCE_MODEL;
+
+  // Note: We'll still keep batches for logging purposes, but process sequentially within each batch
   const batchSize = parseInt(import.meta.env.VITE_REACT_APP_TITLE_RELEVANCE_BATCH_SIZE || "100");
 
   const startTimestamp = Date.now();
@@ -98,19 +100,17 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
   let tokensUsed = 0;
   let skippedCount = 0;
 
-  // Process in batches
+  // Process in batches, but sequentially within each batch
   for (let i = 0; i < data.length; i += batchSize) {
     const currentBatchSize = Math.min(batchSize, data.length - i);
     logCallback(`Processing batch ${Math.floor(i / batchSize) + 1}: items ${i + 1} to ${i + currentBatchSize}`);
 
-    // Process each item in the batch
-    const batchPromises = [];
-
+    // Process each item in the batch SEQUENTIALLY
     for (let j = 0; j < currentBatchSize; j++) {
       const index = i + j;
       const row = data[index];
 
-      // Skip processing if row is already tagged - unlikely in title relevance step as it's the first step
+      // Skip processing if row is already tagged
       if (row.relevanceTag) {
         logCallback(`Skipping item ${index + 1}: Already tagged as "${row.relevanceTag}"`);
         skippedCount++;
@@ -118,58 +118,54 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
         continue;
       }
 
-      // Create a promise for each item in the batch
-      const processPromise = processSingleTitle(row, index, apiKey, model, logCallback)
-        .then(result => {
-          // Update the result in the processedData array
-          processedData[index] = {
-            ...processedData[index],
-            ...result.data
-          };
+      try {
+        // Process single title and await its completion before moving to next
+        const result = await processSingleTitle(row, index, apiKey, model, logCallback);
 
-          // Update analytics
-          if (result.data.titleRelevance === 'Founder') {
-            founderCount++;
-          } else if (result.data.titleRelevance === 'Relevant') {
-            relevantCount++;
-          } else if (result.data.titleRelevance === 'Irrelevant') {
-            irrelevantCount++;
-          }
+        // Update the result in the processedData array
+        processedData[index] = {
+          ...processedData[index],
+          ...result.data
+        };
 
-          // Track tokens
-          if (result.tokens) {
-            tokensUsed += result.tokens;
-          }
+        // Update analytics
+        if (result.data.titleRelevance === 'Founder') {
+          founderCount++;
+        } else if (result.data.titleRelevance === 'Relevant') {
+          relevantCount++;
+        } else if (result.data.titleRelevance === 'Irrelevant') {
+          irrelevantCount++;
+        }
 
-          // Log individual item completion
-          logCallback(`Processed item ${index + 1}: ${result.data.titleRelevance} - ${row.position || 'No position'}`);
+        // Track tokens
+        if (result.tokens) {
+          tokensUsed += result.tokens;
+        }
 
-          // Update progress
-          progressCallback((index + 1) / data.length * 100);
-        })
-        .catch(error => {
-          logCallback(`Error processing item ${index + 1}: ${error.message}`);
-          errorCount++;
+        // Log individual item completion
+        logCallback(`Processed item ${index + 1}: ${result.data.titleRelevance} - ${row.position || 'No position'}`);
+      }
+      catch (error) {
+        logCallback(`Error processing item ${index + 1}: ${error.message}`);
+        errorCount++;
 
-          // Add error info to the processed data
-          processedData[index] = {
-            ...processedData[index],
-            titleRelevance: 'ERROR',
-            titleRelevanceScore: 0,
-            titleRelevanceError: error.message
-          };
+        // Add error info to the processed data
+        processedData[index] = {
+          ...processedData[index],
+          titleRelevance: 'ERROR',
+          titleRelevanceScore: 0,
+          titleRelevanceError: error.message
+        };
+      }
 
-          // Update progress even on error
-          progressCallback((index + 1) / data.length * 100);
-        });
+      // Update progress regardless of success or failure
+      progressCallback((index + 1) / data.length * 100);
 
-      batchPromises.push(processPromise);
+      // Optional: Add a small delay between individual items if needed
+      // await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    // Wait for all items in the batch to complete
-    await Promise.all(batchPromises);
-
-    // Add a small delay between batches
+    // Add a small delay between batches if needed
     if (i + currentBatchSize < data.length) {
       logCallback("Pausing briefly before next batch...");
       await new Promise(resolve => setTimeout(resolve, 500));
