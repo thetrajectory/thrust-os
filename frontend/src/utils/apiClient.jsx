@@ -161,6 +161,41 @@ const serperAPI = {
             console.error('Error in scrapeWebsite:', error.message);
             throw error;
         }
+    },
+
+    searchGoogle: async (query, params = {}) => {
+        try {
+          console.log(`Performing Google search: ${query}`);
+    
+          // Construct the request body
+          const requestBody = {
+            q: query,
+            ...params // Additional parameters like gl, hl, num
+          };
+    
+          // Using our proxy server
+          const response = await apiClient.post('/serper/search', requestBody);
+          
+          // Return the data
+          return response.data;
+        } catch (error) {
+          console.error('Error in searchGoogle:', error.message);
+          throw error;
+        }
+      }
+};
+
+const extractTextAPI = {
+    fromPdf: async (data) => {
+        try {
+            console.log(`Extracting text from PDF: ${data.url}`);
+            
+            const response = await apiClient.post('/extract-text/pdf', data);
+            return response.data;
+        } catch (error) {
+            console.error('Error in PDF text extraction:', error.message);
+            throw error;
+        }
     }
 };
 
@@ -295,5 +330,6 @@ export default {
     serper: serperAPI,
     coresignal: coresignalAPI,
     web: webAPI,
+    extractText: extractTextAPI,
     testConnection,
 };

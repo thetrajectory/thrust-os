@@ -1,11 +1,10 @@
-// components/OrchestratedProcessingPage.jsx
+// components/videocx/VideoCXProcessingPage.jsx
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import enrichmentOrchestrator from '../services/enrichmentOrchestrator';
-import enrichmentOrchestratorUtils from '../utils/enrichmentOrchestratorUtils';
-import storageUtils from '../utils/storageUtils';
+import videoCXOrchestrator from '../../services/videocx/videoCXOrchestrator';
+import storageUtils from '../../utils/storageUtils';
 
-const OrchestratedProcessingPage = () => {
+const VideoCXProcessingPage = ({ csvData, onProcessingComplete, onBack }) => {
   const navigate = useNavigate();
 
   // State management
@@ -17,47 +16,45 @@ const OrchestratedProcessingPage = () => {
   const [filterAnalytics, setFilterAnalytics] = useState({});
   const [isCancelling, setIsCancelling] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [csvData, setCsvData] = useState(null);
-
-  const [userScrolling, setUserScrolling] = useState(false);
-  const logsContainerRef = useRef(null);
+  const [loadedCsvData, setLoadedCsvData] = useState(null);
 
   // Refs
   const logsEndRef = useRef(null);
   const initRef = useRef(false);
+  const logsContainerRef = useRef(null);
 
-
-  // Add handlers for detecting user scroll interaction
-  const handleScroll = () => {
-    if (!logsContainerRef.current) return;
-
-    const { scrollTop, scrollHeight, clientHeight } = logsContainerRef.current;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 10; // Within 10px of bottom
-
-    // User is considered to be manually scrolling if they're not at the bottom
-    setUserScrolling(!isAtBottom);
-  };
-
+  useEffect(() => {
+    // Ensure the correct client is set in storage when this component mounts
+    const currentClient = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.CLIENT);
+    if (currentClient !== 'Video CX') {
+      console.log("Setting client to Video CX in VideoCXProcessingPage");
+      storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.CLIENT, 'Video CX');
+    }
+  }, []);
 
   // Start processing when component mounts or if not started yet
   useEffect(() => {
-    // Try to get CSV data from session storage
-    if (!csvData) {
-      const storedCsvData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.CSV_DATA);
-      if (storedCsvData) {
-        setCsvData(storedCsvData);
+    // Try to get CSV data from props or session storage
+    if (!loadedCsvData) {
+      if (csvData) {
+        setLoadedCsvData(csvData);
+      } else {
+        const storedCsvData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.CSV_DATA);
+        if (storedCsvData) {
+          setLoadedCsvData(storedCsvData);
+        }
       }
     }
 
-    if (!initRef.current && csvData && csvData.length > 0) {
-      console.log("Starting orchestrator pipeline");
+    if (!initRef.current && loadedCsvData && loadedCsvData.length > 0) {
+      console.log("Starting VideoCX orchestrator pipeline");
       initRef.current = true;
 
       // Set up callbacks
       const logCallback = (logEntry) => {
         setLogs(prevLogs => [...prevLogs, logEntry]);
         // Save logs to session storage
-        storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.LOGS, [...logs, logEntry]);
+        storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.VIDEOCX_LOGS, [...logs, logEntry]);
       };
 
       const progressCallback = (percent) => {
@@ -67,12 +64,12 @@ const OrchestratedProcessingPage = () => {
       const statusCallback = (status) => {
         setProcessStatus(status);
         // Save status to session storage
-        storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.PROCESS_STATUS, status);
+        storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.VIDEOCX_PROCESS_STATUS, status);
       };
 
       // Initialize the orchestrator with the CSV data and callbacks
-      enrichmentOrchestrator.setInitialData(csvData);
-      enrichmentOrchestrator.setCallbacks({
+      videoCXOrchestrator.setInitialData(loadedCsvData);
+      videoCXOrchestrator.setCallbacks({
         logCallback,
         progressCallback,
         statusCallback
@@ -82,7 +79,7 @@ const OrchestratedProcessingPage = () => {
       const startPipeline = async () => {
         try {
           setIsProcessing(true);
-          await enrichmentOrchestrator.processCurrentStep();
+          await videoCXOrchestrator.processCurrentStep();
           setIsProcessing(false);
           // Continue processing is handled by the continueProcessing function
         } catch (error) {
@@ -92,59 +89,20 @@ const OrchestratedProcessingPage = () => {
       };
 
       startPipeline();
-    } else if (!initRef.current) {
-      // Try to load state from storage
-      const storedLogs = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.LOGS);
-      const storedStatus = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.PROCESS_STATUS);
-
-      if (storedLogs) setLogs(storedLogs);
-      if (storedStatus) setProcessStatus(storedStatus);
-
-      if (csvData && csvData.length > 0) {
-        console.log("Resuming from stored data");
-        initRef.current = true;
-
-        // Set up the same callbacks
-        const logCallback = (logEntry) => {
-          setLogs(prevLogs => [...prevLogs, logEntry]);
-          storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.LOGS, [...logs, logEntry]);
-        };
-
-        const progressCallback = (percent) => {
-          setProgress(percent);
-        };
-
-        const statusCallback = (status) => {
-          setProcessStatus(status);
-          storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.PROCESS_STATUS, status);
-        };
-
-        // Load orchestrator state
-        enrichmentOrchestrator.setInitialData(csvData);
-        enrichmentOrchestrator.setCallbacks({
-          logCallback,
-          progressCallback,
-          statusCallback
-        });
-
-        // Try to load orchestrator state
-        enrichmentOrchestratorUtils.loadOrchestratorState(enrichmentOrchestrator);
-
-        // Continue processing if not complete
-        if (!enrichmentOrchestrator.processingComplete &&
-          enrichmentOrchestrator.currentStepIndex < enrichmentOrchestrator.pipeline.length) {
-          continueProcessing();
-        } else if (enrichmentOrchestrator.processingComplete) {
-          setProcessingComplete(true);
-        }
-      }
     }
-  }, [csvData, logs]);
+  }, [loadedCsvData, logs]);
+
+  // Scroll to bottom of logs when new logs are added
+  useEffect(() => {
+    if (logsEndRef.current && !userScrolling) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs]);
 
   // Monitor orchestrator state changes
   useEffect(() => {
     const interval = setInterval(() => {
-      const state = enrichmentOrchestrator.getState();
+      const state = videoCXOrchestrator.getState();
 
       // Update processing and cancelling state
       setIsProcessing(state.isProcessing);
@@ -158,19 +116,19 @@ const OrchestratedProcessingPage = () => {
       // Update analytics
       if (state.analytics !== analytics) {
         setAnalytics(state.analytics);
-        storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.ANALYTICS, state.analytics);
+        storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.VIDEOCX_ANALYTICS, state.analytics);
       }
 
       // Update filter analytics
       if (state.filterAnalytics !== filterAnalytics) {
         setFilterAnalytics(state.filterAnalytics);
-        storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.FILTER_ANALYTICS, state.filterAnalytics);
+        storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.VIDEOCX_FILTER_ANALYTICS, state.filterAnalytics);
       }
 
       // Update status
       if (state.stepStatus !== processStatus) {
         setProcessStatus(state.stepStatus);
-        storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.PROCESS_STATUS, state.stepStatus);
+        storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.VIDEOCX_PROCESS_STATUS, state.stepStatus);
       }
     }, 500);
 
@@ -182,44 +140,168 @@ const OrchestratedProcessingPage = () => {
     {
       id: 'titleRelevance',
       name: 'Title Relevance Analysis',
-      description: 'Evaluating job titles to classify as Founder, Relevant, or Irrelevant'
+      description: 'Evaluating job titles to classify as Decision Maker, Relevant, or Irrelevant'
     },
     {
       id: 'apolloEnrichment',
       name: 'Apollo Lead Enrichment',
-      description: 'Fetching detailed person and company information (only for Founder/Relevant)'
+      description: 'Fetching detailed person and company information'
     },
     {
-      id: 'headcountFilter',
-      name: 'Headcount Filtering',
-      description: 'Filtering companies by employee count (10-1500)'
+      id: 'publicCompanyFilter',
+      name: 'Public Company Detection',
+      description: 'Determining if the company is publicly traded'
     },
     {
-      id: 'domainScraping',
-      name: 'Website Scraping',
-      description: 'Extracting content and sitemap from company websites'
+      id: 'fetchAnnualReports',
+      name: 'Fetch Annual Reports',
+      description: 'Retrieving Annual Financial Reports (10-K or Annual)'
     },
     {
-      id: 'companyRelevance',
-      name: 'Company Relevance Scoring',
-      description: 'Analyzing companies for relevance (keeping scores 3+)'
-    },
-    {
-      id: 'indianLeads',
-      name: 'Indian Presence Analysis',
-      description: 'Determining company presence in India (must be <20%)'
-    },
-    {
-      id: 'otherCountryLeads',
-      name: 'Other Country Presence Analysis',
-      description: 'Determining company presence in other countries'
-    },
-    {
-      id: 'openJobs',
-      name: 'Open Jobs Scraping',
-      description: 'Collecting information about company job openings'
+      id: 'insightsExtraction',
+      name: 'Insights Extraction',
+      description: 'Extracting insights from company reports'
     }
   ];
+
+  // Handle automatic pipeline execution
+  const continueProcessing = async () => {
+    // Get current state to avoid race conditions
+    const state = videoCXOrchestrator.getState();
+
+    // Check if we should continue processing
+    if (state.currentStepIndex < videoCXOrchestrator.pipeline.length &&
+      !state.isProcessing &&
+      !state.processingComplete &&
+      !state.error) {
+      try {
+        setIsProcessing(true);
+        const shouldContinue = await videoCXOrchestrator.processCurrentStep();
+        setIsProcessing(false);
+
+        // Add a counter to prevent infinite loops
+        if (shouldContinue &&
+          !videoCXOrchestrator.error &&
+          !videoCXOrchestrator.isCancelling &&
+          videoCXOrchestrator.currentStepIndex < videoCXOrchestrator.pipeline.length) {
+          // Use a setTimeout to prevent stack overflow
+          setTimeout(continueProcessing, 500);
+        } else if (!shouldContinue && !processingComplete) {
+          // Check if we're done with processing
+          if (videoCXOrchestrator.processingComplete) {
+            setProcessingComplete(true);
+            // Save final state
+            storageUtils.saveToStorage(
+              storageUtils.STORAGE_KEYS.VIDEOCX_PROCESSED,
+              videoCXOrchestrator.processedData
+            );
+          }
+        }
+      } catch (error) {
+        setIsProcessing(false);
+        console.error("Error in pipeline:", error);
+      }
+    }
+  };
+
+  // Handle cancellation
+  const handleCancelProcessing = () => {
+    // Log termination message
+    const terminationLog = {
+      timestamp: new Date().toLocaleTimeString(),
+      message: "PROCESSING TERMINATED BY USER"
+    };
+
+    // Add termination message to logs
+    setLogs(prevLogs => [...prevLogs, terminationLog]);
+
+    // Save logs to storage with termination message
+    const updatedLogs = [...logs, terminationLog];
+    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.VIDEOCX_LOGS, updatedLogs);
+
+    // Force all processing to stop immediately
+    setIsProcessing(false);
+    setIsCancelling(false);
+
+    // Mark orchestrator as complete to prevent further processing
+    videoCXOrchestrator.processingComplete = true;
+
+    // Mark the current step as terminated
+    const currentStepId = videoCXOrchestrator.pipeline[videoCXOrchestrator.currentStepIndex];
+    if (currentStepId) {
+      const updatedStatus = { ...processStatus };
+      updatedStatus[currentStepId] = {
+        status: 'cancelled',
+        message: 'Terminated by user'
+      };
+      setProcessStatus(updatedStatus);
+      storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.VIDEOCX_PROCESS_STATUS, updatedStatus);
+    }
+
+    // Save the current state of data processing
+    storageUtils.saveToStorage(
+      storageUtils.STORAGE_KEYS.VIDEOCX_PROCESSED,
+      videoCXOrchestrator.processedData || loadedCsvData
+    );
+
+    // Jump directly to results page
+    handleViewResults();
+  };
+
+  // Handle viewing results
+  const handleViewResults = () => {
+    // Get the FULL processed data regardless of completion state
+    const allData = videoCXOrchestrator.processedData || loadedCsvData;
+  
+    // Save processed data
+    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.VIDEOCX_PROCESSED, allData);
+  
+    // Add termination analytics if cancelled
+    if (isCancelling) {
+      const terminationAnalytics = {
+        terminated: true,
+        terminationTime: new Date().toISOString(),
+        completedSteps: videoCXOrchestrator.currentStepIndex,
+        totalSteps: videoCXOrchestrator.pipeline.length
+      };
+  
+      storageUtils.saveToStorage(
+        storageUtils.STORAGE_KEYS.VIDEOCX_ANALYTICS,
+        { ...analytics, termination: terminationAnalytics }
+      );
+    }
+  
+    // Pass data back to parent component with explicit client type
+    if (onProcessingComplete) {
+      onProcessingComplete(allData, 'Video CX'); // Explicitly pass client type
+    } else {
+      // If no callback, navigate directly
+      navigate('/videocx/results');
+    }
+  };
+
+  // User scrolling state
+  const [userScrolling, setUserScrolling] = useState(false);
+
+  // Handle scroll in logs container
+  const handleScroll = () => {
+    if (!logsContainerRef.current) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = logsContainerRef.current;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 10; // Within 10px of bottom
+
+    // User is considered to be manually scrolling if they're not at the bottom
+    setUserScrolling(!isAtBottom);
+  };
+
+  // Ensure the pipeline continues automatically
+  useEffect(() => {
+    if (initRef.current && !isProcessing &&
+      !processingComplete &&
+      !videoCXOrchestrator.error) {
+      continueProcessing();
+    }
+  }, [isProcessing, videoCXOrchestrator.currentStepIndex]);
 
   // Status indicator component
   const StatusIndicator = ({ status }) => {
@@ -253,8 +335,8 @@ const OrchestratedProcessingPage = () => {
         return (
           <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
             <div className="bg-green-50 p-2 rounded">
-              <div className="font-bold text-green-700">{safeNumber(analytics.founderCount)}</div>
-              <div>Founder</div>
+              <div className="font-bold text-green-700">{safeNumber(analytics.decisionMakerCount)}</div>
+              <div>Decision Maker</div>
             </div>
             <div className="bg-blue-50 p-2 rounded">
               <div className="font-bold text-blue-700">{safeNumber(analytics.relevantCount)}</div>
@@ -275,7 +357,7 @@ const OrchestratedProcessingPage = () => {
               <div>From Supabase</div>
             </div>
             <div className="bg-blue-50 p-2 rounded">
-              <div className="font-bold text-blue-700">{safeNumber(analytics.apolloFetches)}</div>
+            <div className="font-bold text-blue-700">{safeNumber(analytics.apolloFetches)}</div>
               <div>From Apollo</div>
             </div>
             <div className="bg-red-50 p-2 rounded">
@@ -285,92 +367,56 @@ const OrchestratedProcessingPage = () => {
           </div>
         );
 
-      case 'headcountFilter':
+      case 'publicCompanyFilter':
         return (
           <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
             <div className="bg-green-50 p-2 rounded">
-              <div className="font-bold text-green-700">{safeNumber(analytics.filteredCount)}</div>
-              <div>Passed Filter</div>
+              <div className="font-bold text-green-700">{safeNumber(analytics.publicCount)}</div>
+              <div>Public Companies</div>
             </div>
             <div className="bg-red-50 p-2 rounded">
-              <div className="font-bold text-red-700">{safeNumber(analytics.tooSmallCount)}</div>
-              <div>Too Small</div>
+              <div className="font-bold text-red-700">{safeNumber(analytics.privateCount)}</div>
+              <div>Private Companies</div>
             </div>
             <div className="bg-yellow-50 p-2 rounded">
-              <div className="font-bold text-yellow-700">{safeNumber(analytics.tooLargeCount)}</div>
-              <div>Too Large</div>
-            </div>
-          </div>
-        );
-
-      case 'domainScraping':
-        return (
-          <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
-            <div className="bg-green-50 p-2 rounded">
-              <div className="font-bold text-green-700">{safeNumber(analytics.supabaseHits)}</div>
-              <div>From Supabase</div>
-            </div>
-            <div className="bg-blue-50 p-2 rounded">
-              <div className="font-bold text-blue-700">{safeNumber(analytics.scrapeSuccesses)}</div>
-              <div>Freshly Scraped</div>
-            </div>
-            <div className="bg-yellow-50 p-2 rounded">
-              <div className="font-bold text-yellow-700">{safeNumber(analytics.totalCreditsUsed)}</div>
+              <div className="font-bold text-yellow-700">{safeNumber(analytics.creditsUsed)}</div>
               <div>Credits Used</div>
             </div>
           </div>
         );
 
-      case 'companyRelevance':
+      case 'marketBasedAnalysis':
         return (
           <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
             <div className="bg-green-50 p-2 rounded">
-              <div className="font-bold text-green-700">{safeNumber(analytics.highRelevance)}</div>
-              <div>High Relevance (3-5)</div>
-            </div>
-            <div className="bg-yellow-50 p-2 rounded">
-              <div className="font-bold text-yellow-700">{safeNumber(analytics.lowRelevance)}</div>
-              <div>Low Relevance (1-2)</div>
-            </div>
-            <div className="bg-gray-50 p-2 rounded">
-              <div className="font-bold text-gray-700">{safeNumber(analytics.tooSmallCount + (analytics.tooLargeCount || 0))}</div>
-              <div>Size Filtered</div>
-            </div>
-          </div>
-        );
-
-      case 'indianLeads':
-        return (
-          <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
-            <div className="bg-red-50 p-2 rounded">
-              <div className="font-bold text-red-700">{safeNumber(analytics.tooManyIndiansCount)}</div>
-              <div>High Indian Presence</div>
-            </div>
-            <div className="bg-green-50 p-2 rounded">
-              <div className="font-bold text-green-700">{safeNumber(analytics.totalProcessed - (analytics.tooManyIndiansCount || 0))}</div>
-              <div>Acceptable Level</div>
+              <div className="font-bold text-green-700">{safeNumber(analytics.usCount)}</div>
+              <div>US Companies</div>
             </div>
             <div className="bg-blue-50 p-2 rounded">
-              <div className="font-bold text-blue-700">{safeNumber(analytics.supabaseHits)}</div>
-              <div>From Supabase</div>
+              <div className="font-bold text-blue-700">{safeNumber(analytics.nonUsCount)}</div>
+              <div>Non-US Companies</div>
+            </div>
+            <div className="bg-yellow-50 p-2 rounded">
+              <div className="font-bold text-yellow-700">{safeNumber(analytics.reportsFound)}</div>
+              <div>Reports Found</div>
             </div>
           </div>
         );
 
-      case 'openJobs':
+      case 'insightsExtraction':
         return (
           <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
             <div className="bg-green-50 p-2 rounded">
-              <div className="font-bold text-green-700">{safeNumber(analytics.jobCounts?.high)}</div>
-              <div>High Hiring (20+)</div>
+              <div className="font-bold text-green-700">{safeNumber(analytics.insightsFound)}</div>
+              <div>Insights Found</div>
             </div>
-            <div className="bg-yellow-50 p-2 rounded">
-              <div className="font-bold text-yellow-700">{safeNumber(analytics.jobCounts?.medium)}</div>
-              <div>Medium Hiring (11-20)</div>
+            <div className="bg-red-50 p-2 rounded">
+              <div className="font-bold text-red-700">{safeNumber(analytics.noInsights)}</div>
+              <div>No Insights Found</div>
             </div>
-            <div className="bg-gray-50 p-2 rounded">
-              <div className="font-bold text-gray-700">{safeNumber(analytics.jobCounts?.low)}</div>
-              <div>Low Hiring (1-10)</div>
+            <div className="bg-blue-50 p-2 rounded">
+              <div className="font-bold text-blue-700">{safeNumber(analytics.tokensUsed)}</div>
+              <div>Tokens Used</div>
             </div>
           </div>
         );
@@ -380,143 +426,10 @@ const OrchestratedProcessingPage = () => {
     }
   };
 
-  // Handle automatic pipeline execution
-  const continueProcessing = async () => {
-    // Get current state to avoid race conditions
-    const state = enrichmentOrchestrator.getState();
-
-    // Check if we should continue processing
-    if (state.currentStepIndex < enrichmentOrchestrator.pipeline.length &&
-      !state.isProcessing &&
-      !state.processingComplete &&
-      !state.error) {
-      try {
-        setIsProcessing(true);
-        const shouldContinue = await enrichmentOrchestrator.processCurrentStep();
-        setIsProcessing(false);
-
-        // Add a counter to prevent infinite loops
-        if (shouldContinue &&
-          !enrichmentOrchestrator.error &&
-          !enrichmentOrchestrator.isCancelling &&
-          enrichmentOrchestrator.currentStepIndex < enrichmentOrchestrator.pipeline.length) {
-          // Use a setTimeout to prevent stack overflow
-          setTimeout(continueProcessing, 500);
-        } else if (!shouldContinue && !processingComplete) {
-          // Check if we're done with processing
-          if (enrichmentOrchestrator.processingComplete) {
-            setProcessingComplete(true);
-            // Save final state
-            storageUtils.saveToStorage(
-              storageUtils.STORAGE_KEYS.PROCESSED,
-              enrichmentOrchestrator.processedData
-            );
-            storageUtils.saveToStorage(
-              storageUtils.STORAGE_KEYS.FILTERED,
-              enrichmentOrchestrator.filteredData
-            );
-          }
-        }
-      } catch (error) {
-        setIsProcessing(false);
-        console.error("Error in pipeline:", error);
-      }
-    }
-  };
-
-  // Handle cancellation
-  const handleCancelProcessing = () => {
-    // Log termination message
-    const terminationLog = {
-      timestamp: new Date().toLocaleTimeString(),
-      message: "PROCESSING TERMINATED BY USER"
-    };
-
-    // Add termination message to logs
-    setLogs(prevLogs => [...prevLogs, terminationLog]);
-
-    // Save logs to storage with termination message
-    const updatedLogs = [...logs, terminationLog];
-    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.LOGS, updatedLogs);
-
-    // Force all processing to stop immediately
-    setIsProcessing(false);
-    setIsCancelling(false);
-
-    // Mark orchestrator as complete to prevent further processing
-    enrichmentOrchestrator.processingComplete = true;
-
-    // Mark the current step as terminated
-    const currentStepId = enrichmentOrchestrator.pipeline[enrichmentOrchestrator.currentStepIndex];
-    if (currentStepId) {
-      const updatedStatus = { ...processStatus };
-      updatedStatus[currentStepId] = {
-        status: 'cancelled',
-        message: 'Terminated by user'
-      };
-      setProcessStatus(updatedStatus);
-      storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.PROCESS_STATUS, updatedStatus);
-    }
-
-    // Save the current state of data processing
-    storageUtils.saveToStorage(
-      storageUtils.STORAGE_KEYS.PROCESSED,
-      enrichmentOrchestrator.processedData || csvData
-    );
-    storageUtils.saveToStorage(
-      storageUtils.STORAGE_KEYS.FILTERED,
-      enrichmentOrchestrator.filteredData || enrichmentOrchestrator.processedData || csvData
-    );
-
-    // Optional: Jump directly to results page instead of waiting
-    handleViewResults();
-  };
-
-  // Enhance handleViewResults to handle terminated state
-  const handleViewResults = () => {
-    // Get the FULL processed data regardless of completion state
-    const allData = enrichmentOrchestrator.processedData || csvData;
-
-    // Save processed data
-    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.PROCESSED, allData);
-
-    // Add termination analytics if cancelled
-    if (isCancelling) {
-      const terminationAnalytics = {
-        terminated: true,
-        terminationTime: new Date().toISOString(),
-        completedSteps: enrichmentOrchestrator.currentStepIndex,
-        totalSteps: enrichmentOrchestrator.pipeline.length
-      };
-
-      storageUtils.saveToStorage(
-        storageUtils.STORAGE_KEYS.ANALYTICS,
-        { ...analytics, termination: terminationAnalytics }
-      );
-    }
-
-    // Navigate to results page
-    navigate('/incommon/results');
-  };
-
-  // Ensure the pipeline continues automatically
-  useEffect(() => {
-    if (initRef.current && !isProcessing &&
-      !processingComplete &&
-      !enrichmentOrchestrator.error) {
-      continueProcessing();
-    }
-  }, [isProcessing, enrichmentOrchestrator.currentStepIndex]);
-
-
-  const handleBack = () => {
-    navigate('/upload');
-  };
-
   return (
     <div className="flex flex-col items-center justify-center">
       <button
-        onClick={handleBack}
+        onClick={onBack}
         className="self-start mb-4 text-blue-600 hover:underline"
         disabled={isProcessing && !isCancelling}
       >
@@ -524,14 +437,14 @@ const OrchestratedProcessingPage = () => {
       </button>
 
       <h2 className="text-4xl font-bold text-center mb-8">
-        Processing Data
+        VideoCX Data Processing
       </h2>
 
       <div className="w-full max-w-6xl flex flex-col md:flex-row gap-6">
         {/* Left side: Steps and progress */}
         <div className="w-full md:w-1/2">
           <div className="bg-white shadow-md rounded-lg p-6 mb-6">
-            <h3 className="text-xl font-semibold mb-4">Enrichment Progress</h3>
+            <h3 className="text-xl font-semibold mb-4">VideoCX Enrichment Progress</h3>
 
             {/* Progress bar */}
             <div className="w-full bg-gray-200 rounded-full h-4 mb-6">
@@ -544,7 +457,7 @@ const OrchestratedProcessingPage = () => {
             {/* Steps */}
             <div className="space-y-4">
               {steps.map((step, index) => {
-                const currentStep = enrichmentOrchestrator.currentStepIndex;
+                const currentStep = videoCXOrchestrator.currentStepIndex;
                 return (
                   <div
                     key={step.id}
@@ -615,11 +528,11 @@ const OrchestratedProcessingPage = () => {
                   {isCancelling ? 'Cancelling...' : 'Cancel Processing'}
                 </button>
               ) : (
-                enrichmentOrchestrator.error ? (
+                videoCXOrchestrator.error ? (
                   <button
                     onClick={() => {
-                      enrichmentOrchestrator.error = null;
-                      enrichmentOrchestrator.processCurrentStep().then(() => {
+                      videoCXOrchestrator.error = null;
+                      videoCXOrchestrator.processCurrentStep().then(() => {
                         continueProcessing();
                       });
                     }}
@@ -645,14 +558,14 @@ const OrchestratedProcessingPage = () => {
           <div className="bg-white shadow-md rounded-lg p-6">
             <h3 className="text-xl font-semibold mb-4">Data Preview</h3>
 
-            {enrichmentOrchestrator.error && (
+            {videoCXOrchestrator.error && (
               <div className="bg-red-100 border border-red-400 text-red-700 p-4 rounded mb-4">
                 <p className="font-bold">Error:</p>
-                <p>{enrichmentOrchestrator.error.message}</p>
+                <p>{videoCXOrchestrator.error.message}</p>
               </div>
             )}
 
-            {csvData && csvData.length > 0 ? (
+            {loadedCsvData && loadedCsvData.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead>
@@ -675,7 +588,7 @@ const OrchestratedProcessingPage = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {csvData.slice(0, 3).map((row, rowIndex) => (
+                    {loadedCsvData.slice(0, 3).map((row, rowIndex) => (
                       <tr key={rowIndex}>
                         <td className="px-3 py-2 text-sm text-gray-800">
                           {row.first_name || row.person?.first_name || ''}
@@ -692,16 +605,13 @@ const OrchestratedProcessingPage = () => {
                         <td className="px-3 py-2 text-sm text-gray-800">
                           {row.titleRelevance || 'Pending'}
                         </td>
-                        <td className="px-3 py-2 text-sm text-gray-800">
-                          {row.relevanceTag || 'None'}
-                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                {csvData.length > 3 && (
+                {loadedCsvData.length > 3 && (
                   <div className="mt-2 text-sm text-gray-500 text-center">
-                    Showing 3 of {csvData.length} rows
+                    Showing 3 of {loadedCsvData.length} rows
                   </div>
                 )}
               </div>
@@ -719,6 +629,8 @@ const OrchestratedProcessingPage = () => {
             <h3 className="text-xl font-semibold mb-4">Processing Logs</h3>
 
             <div
+              ref={logsContainerRef}
+              onScroll={handleScroll}
               className="bg-gray-900 text-gray-100 p-4 rounded-lg h-[500px] overflow-y-auto font-mono text-sm text-left"
               style={{ overflowY: 'auto', maxHeight: '500px' }}
             >
@@ -748,7 +660,7 @@ const OrchestratedProcessingPage = () => {
                     Processing complete. Click "View Results" to continue.
                   </div>
                 ) : (
-                  enrichmentOrchestrator.error ? (
+                  videoCXOrchestrator.error ? (
                     <div className="flex items-center">
                       <div className="w-2 h-2 rounded-full bg-red-500 mr-2"></div>
                       Processing failed. Check the logs above and try to retry the current step.
@@ -769,4 +681,4 @@ const OrchestratedProcessingPage = () => {
   );
 };
 
-export default OrchestratedProcessingPage;
+export default VideoCXProcessingPage;

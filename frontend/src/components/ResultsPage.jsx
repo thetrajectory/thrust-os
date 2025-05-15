@@ -217,7 +217,7 @@ const ResultsPage = (props) => {
   };
 
   const handleBack = () => {
-    navigate('/processing');
+    navigate('/incommon/processing');
   };
 
   const runDiagnostics = () => {

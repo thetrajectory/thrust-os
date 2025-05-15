@@ -10,7 +10,7 @@ const ClientSelectionPage = () => {
 
   // Define clients array directly in the component
   const clients = [
-    'Incommon AI', 'Client B', 'Client C', 'Client D',
+    'Incommon AI', 'Video CX', 'Client C', 'Client D',
     'Client E', 'Client F', 'Client G', 'Client H'
   ];
 
@@ -39,7 +39,7 @@ const ClientSelectionPage = () => {
 
       <div className="bg-blue-50 p-4 rounded-lg mb-8 max-w-xl text-center">
         <p className="text-blue-700">
-          <span className="font-bold">Note:</span> Currently, full enrichment pipeline is only available for Incommon AI client.
+          <span className="font-bold">Note:</span> Currently, VideoCX and Incommon AI processing pipelines are fully implemented and available.
         </p>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-4xl">
@@ -47,14 +47,17 @@ const ClientSelectionPage = () => {
           <button
             key={index}
             onClick={() => handleClientSelect(client)}
-            className="px-4 py-3 text-lg border-2 border-blue-300 rounded-full hover:bg-blue-50 transition-colors"
+            className={`px-4 py-3 text-lg border-2 ${client === 'Incommon AI' || client === 'Video CX'
+              ? 'border-blue-300 hover:bg-blue-50'
+              : 'border-gray-300 text-gray-400 cursor-not-allowed'
+              } rounded-full transition-colors`}
+            disabled={client !== 'Incommon AI' && client !== 'Video CX'}
           >
             {client}
           </button>
         ))}
       </div>
     </div>
-  );
+  )
 };
-
 export default ClientSelectionPage;

@@ -203,6 +203,51 @@ app.post('/api/openai/chat/completions', async (req, res) => {
   }
 });
 
+// Serper Search Proxy
+app.post('/api/serper/search', async (req, res) => {
+  try {
+    console.log('Proxying Serper search request...');
+    
+    const apiKey = process.env.SERPER_API_KEY;
+    if (!apiKey) {
+      return res.status(401).json({ error: 'Serper API key not configured' });
+    }
+    
+    // Validate request body
+    if (!req.body) {
+      return res.status(400).json({ error: 'Request body is required' });
+    }
+    
+    console.log(`Performing Serper search with query: ${req.body.q}`);
+    
+    const response = await axios.post(
+      'https://google.serper.dev/search',
+      req.body,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-KEY': apiKey
+        },
+        timeout: 30000 // 30 second timeout
+      }
+    );
+    
+    console.log('Serper Search API response received successfully');
+    res.json(response.data);
+  } catch (error) {
+    console.error('Serper Search API error:', error.message);
+    console.error('Response details:', error.response?.data);
+    
+    // Structured error response
+    res.status(error.response?.status || 500).json({
+      error: {
+        message: 'Error calling Serper Search API',
+        details: error.response?.data || error.message
+      }
+    });
+  }
+});
+
 // Serper API proxy
 app.post('/api/serper/website', async (req, res) => {
   try {
@@ -422,6 +467,67 @@ app.get('/api/coresignal/collect/:responseCode', async (req, res) => {
       error: {
         message: 'Error calling Coresignal Collect API',
         details: error.response?.data || error.message
+      }
+    });
+  }
+});
+
+// PDF Text Extraction Endpoint
+app.post('/api/extract-text/pdf', async (req, res) => {
+  try {
+    console.log('Proxying PDF text extraction request...');
+    
+    if (!req.body || !req.body.url) {
+      return res.status(400).json({ error: 'URL is required in request body' });
+    }
+    
+    const pdfUrl = req.body.url;
+    console.log(`Extracting text from PDF: ${pdfUrl}`);
+    
+    // Add headers to avoid being blocked
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      'Accept': 'application/pdf,application/x-pdf',
+      'Accept-Language': 'en-US,en;q=0.5',
+      'Connection': 'keep-alive',
+      'Cache-Control': 'max-age=0'
+    };
+    
+    // Fetch the PDF content
+    const response = await axios.get(pdfUrl, {
+      headers: headers,
+      timeout: 60000, // 60 second timeout
+      responseType: 'arraybuffer' // Important for PDFs
+    });
+    
+    if (response.status !== 200) {
+      return res.status(response.status).json({
+        error: `Failed to download PDF: HTTP ${response.status}`,
+      });
+    }
+    
+    // Use pdf-parse to extract text
+    const pdfParse = require('pdf-parse');
+    
+    const pdfData = await pdfParse(Buffer.from(response.data));
+    
+    console.log(`Successfully extracted ${pdfData.text.length} characters of text from PDF (${pdfData.numpages} pages)`);
+    
+    // Return the extracted text
+    res.json({
+      success: true,
+      text: pdfData.text,
+      pageCount: pdfData.numpages,
+      info: pdfData.info,
+      metadata: pdfData.metadata
+    });
+  } catch (error) {
+    console.error('PDF Text Extraction error:', error.message);
+    
+    res.status(500).json({
+      error: {
+        message: 'Error extracting text from PDF',
+        details: error.message
       }
     });
   }

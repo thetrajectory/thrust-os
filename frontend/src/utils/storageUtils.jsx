@@ -10,7 +10,15 @@ const STORAGE_KEYS = {
   FILTER_ANALYTICS: 'trajectory_filterAnalytics',
   LOGS: 'trajectory_logs',
   PROCESS_STATUS: 'trajectory_processStatus',
-  CURRENT_STEP: 'trajectory_currentStep'
+  CURRENT_STEP: 'trajectory_currentStep',
+
+  // VideoCX Specific Keys
+  VIDEOCX_PROCESSED: 'trajectory_videocx_processed',
+  VIDEOCX_LOGS: 'trajectory_videocx_logs',
+  VIDEOCX_ANALYTICS: 'trajectory_videocx_analytics',
+  VIDEOCX_FILTER_ANALYTICS: 'trajectory_videocx_filterAnalytics',
+  VIDEOCX_PROCESS_STATUS: 'trajectory_videocx_processStatus',
+  VIDEOCX_CURRENT_STEP: 'trajectory_videocx_currentStep'
 };
 
 // Save data to session storage with key

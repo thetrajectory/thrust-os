@@ -1,17 +1,27 @@
-// App.jsx
-import React, { useState } from 'react';
+// App.jsx (with client-based route structure)
+import React, { useEffect, useState } from 'react';
 import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import './App.css';
+
+// Import common components
 import AdvisorSelectionPage from './components/AdvisorSelectionPage';
 import ClientSelectionPage from './components/ClientSelectionPage';
 import FileUploadPage from './components/FileUploadPage';
 import LandingPage from './components/LandingPage';
-import OrchestratedProcessingPage from './components/OrchestratedProcessingPage';
-import ResultsPage from './components/ResultsPage';
-import enrichmentOrchestrator from './services/enrichmentOrchestrator';
+
+// Import engine-specific components
+import OrchestratedProcessingPage from './components/OrchestratedProcessingPage'; // Incommon
+import ResultsPage from './components/ResultsPage'; // Incommon
+import VideoCXProcessingPage from './components/videocx/videoCXProcessingPage'; // VideoCX
+import VideoCXResultsPage from './components/videocx/VideoCXResultsPage'; // VideoCX
+
+// Import services
+import enrichmentOrchestrator from './services/enrichmentOrchestrator'; // Incommon
+import videoCXOrchestrator from './services/videocx/videoCXOrchestrator'; // VideoCX
+import storageUtils from './utils/storageUtils';
 
 const App = () => {
-  // Navigation hooks (now works because we're inside BrowserRouter)
+  // Navigation hooks
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -25,24 +35,70 @@ const App = () => {
   const [analytics, setAnalytics] = useState({});
   const [filterAnalytics, setFilterAnalytics] = useState({});
 
+  // Load state from storage on component mount
+  useEffect(() => {
+    const storedClient = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.CLIENT);
+    const storedEngine = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.ENGINE);
+    const storedAdvisor = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.ADVISOR);
+
+    if (storedClient) setSelectedClient(storedClient);
+    if (storedEngine) setSelectedEngine(storedEngine);
+    if (storedAdvisor) setSelectedAdvisor(storedAdvisor);
+
+    console.log("Loaded client from storage:", storedClient);
+  }, []);
+
+  useEffect(() => {
+    // If we don't have a selected client but we're on a client-specific path
+    if (!selectedClient && location.pathname) {
+      if (location.pathname.includes('/videocx/')) {
+        console.log("Restoring client to Video CX from URL path");
+        setSelectedClient('Video CX');
+        storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.CLIENT, 'Video CX');
+      } else if (location.pathname.includes('/incommon/')) {
+        console.log("Restoring client to Incommon AI from URL path");
+        setSelectedClient('Incommon AI');
+        storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.CLIENT, 'Incommon AI');
+      }
+    }
+  }, [location.pathname, selectedClient]);
+
+  // Get client path prefix
+  const getClientPathPrefix = (client = null) => {
+    // Use passed client parameter or the state value
+    const clientName = client || selectedClient;
+
+    console.log("Getting path prefix for client:", clientName); // Debug log
+
+    // Convert client name to lowercase and remove spaces for URL
+    if (clientName === 'Incommon AI') return 'incommon';
+    if (clientName === 'Video CX') return 'videocx';
+
+    // Check if we're on a videocx path but don't have client info
+    if (location.pathname.includes('/videocx/')) return 'videocx';
+    if (location.pathname.includes('/incommon/')) return 'incommon';
+
+    return 'default'; // Fallback
+  };
+
   // Navigation handlers
   const handleEngineSelection = (engine) => {
     setSelectedEngine(engine);
+    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.ENGINE, engine);
     navigate('/client');
   };
 
   const handleClientSelection = (client) => {
+    console.log("Selected client:", client);
     setSelectedClient(client);
+    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.CLIENT, client);
     navigate('/advisor');
   };
 
   const handleAdvisorSelection = (advisor) => {
     setSelectedAdvisor(advisor);
+    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.ADVISOR, advisor);
     navigate('/upload');
-  };
-
-  const isIncommonClient = () => {
-    return selectedClient === 'Incommon AI';
   };
 
   const handleFileUpload = (file, data) => {
@@ -57,20 +113,23 @@ const App = () => {
     }));
 
     setCsvData(enrichedData);
+    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.CSV_DATA, enrichedData);
 
-    if (isIncommonClient()) {
-      navigate('/processing');
-    } else {
-      // For other clients, we'll just skip processing for now (placeholder for V2)
-      setProcessedData(enrichedData);
-      navigate('/results');
-    }
-
+    // Navigate to the client-specific processing route
+    const clientPrefix = getClientPathPrefix();
+    navigate(`/${clientPrefix}/processing`);
   };
 
-  const handleProcessingComplete = (filteredData) => {
+  const handleProcessingComplete = (data, clientType = null) => {
+    // Use passed client type or current selected client
+    const client = clientType || selectedClient;
+    console.log("Processing complete for client:", client); // Debug log
+
+    // Get the right orchestrator based on client
+    const orchestrator = client === 'Video CX' ? videoCXOrchestrator : enrichmentOrchestrator;
+
     // Make sure we have data
-    const orchestratorData = enrichmentOrchestrator.processedData || csvData || [];
+    const orchestratorData = orchestrator.processedData || csvData || [];
 
     if (!Array.isArray(orchestratorData)) {
       console.error("Invalid processed data from orchestrator:", orchestratorData);
@@ -80,33 +139,53 @@ const App = () => {
     setProcessedData(orchestratorData);
 
     // Update analytics state from orchestrator
-    setAnalytics(enrichmentOrchestrator.analytics || {});
-    setFilterAnalytics(enrichmentOrchestrator.filterAnalytics || {});
+    setAnalytics(orchestrator.analytics || {});
+    setFilterAnalytics(orchestrator.filterAnalytics || {});
 
-    navigate('/results');
+    // Navigate to client-specific results page - use the client parameter for prefix
+    const clientPrefix = getClientPathPrefix(client);
+    console.log("Navigating to results with prefix:", clientPrefix); // Debug log
+    navigate(`/${clientPrefix}/results`);
   };
 
   const handleBackNavigation = () => {
     const path = location.pathname;
+    const clientPrefix = getClientPathPrefix();
 
+    // Common paths
     if (path === '/client') {
       navigate('/');
+      return;
     } else if (path === '/advisor') {
       navigate('/client');
+      return;
     } else if (path === '/upload') {
       navigate('/advisor');
-    } else if (path === '/processing') {
+      return;
+    }
+
+    // Client-specific paths
+    if (path === `/${clientPrefix}/processing`) {
       navigate('/upload');
       resetProcessing();
-    } else if (path === '/results') {
-      navigate('/processing');
+      return;
     }
+
+    if (path === `/${clientPrefix}/results`) {
+      navigate(`/${clientPrefix}/processing`);
+      return;
+    }
+
+    // Default fallback - go to home
+    navigate('/');
   };
 
   // Handle going back to home
   const handleGoToHome = () => {
+    const clientPrefix = getClientPathPrefix();
+
     // If currently processing, ask for confirmation
-    if (location.pathname === '/processing' &&
+    if (location.pathname === `/${clientPrefix}/processing` &&
       !window.confirm('Going back to the homepage will cancel the current processing. Continue?')) {
       return;
     }
@@ -121,8 +200,12 @@ const App = () => {
     setAnalytics({});
     setFilterAnalytics({});
 
-    // Reset orchestrator
-    resetProcessing();
+    // Reset both orchestrators to be safe
+    if (selectedClient === 'Video CX') {
+      videoCXOrchestrator.reset();
+    } else {
+      enrichmentOrchestrator.reset();
+    }
 
     // Navigate to home
     navigate('/');
@@ -132,24 +215,18 @@ const App = () => {
     setProcessedData(null);
     setAnalytics({});
     setFilterAnalytics({});
-    // Reset orchestrator
-    enrichmentOrchestrator.reset();
+
+    // Reset the appropriate orchestrator
+    if (selectedClient === 'Video CX') {
+      videoCXOrchestrator.reset();
+    } else {
+      enrichmentOrchestrator.reset();
+    }
   };
-
-  // Mock client and advisor data
-  const clients = [
-    'Incommon AI', 'Client B', 'Client C', 'Client D',
-    'Client E', 'Client F', 'Client G', 'Client H'
-  ];
-
-  const advisors = [
-    'Advisor 1', 'Advisor 2', 'Advisor 3', 'Advisor 4'
-  ];
 
   return (
     <div className="min-h-screen bg-white p-6">
       <header className="mb-12 flex items-center">
-        {/* Make the app name clickable with cursor-pointer and hover effect */}
         <h1
           className="text-2xl font-bold cursor-pointer hover:text-blue-600 transition-colors"
           onClick={handleGoToHome}
@@ -161,68 +238,55 @@ const App = () => {
             Client: {selectedClient} {selectedAdvisor && `| Advisor: ${selectedAdvisor}`}
           </span>
         )}
-        {/* <ProxyConnectionTest /> */}
       </header>
 
       <Routes>
-        <Route
-          path="/"
-          element={<LandingPage onEngineSelect={handleEngineSelection} />}
-        />
-        <Route
-          path="/client"
-          element={
-            <ClientSelectionPage
-              clients={clients}
-              engine={selectedEngine}
-              onClientSelect={handleClientSelection}
-              onBack={handleBackNavigation}
-            />
-          }
-        />
-        <Route
-          path="/advisor"
-          element={
-            <AdvisorSelectionPage
-              advisors={advisors}
-              client={selectedClient}
-              onAdvisorSelect={handleAdvisorSelection}
-              onBack={handleBackNavigation}
-            />
-          }
-        />
-        <Route
-          path="/upload"
-          element={
-            <FileUploadPage
-              onFileUpload={handleFileUpload}
-              onBack={handleBackNavigation}
-            />
-          }
-        />
-        <Route
-          path="/processing"
-          element={
-            <OrchestratedProcessingPage
-              csvData={csvData}
-              onProcessingComplete={handleProcessingComplete}
-              onBack={handleBackNavigation}
-            />
-          }
-        />
-        <Route
-          path="/results"
-          element={
-            <ResultsPage
-              processedData={processedData}  // This should be all rows
-              originalCount={csvData?.length || 0}
-              analytics={analytics}
-              finalCount={processedData ? processedData.filter(row => !row.relevanceTag).length : 0}
-              filterAnalytics={filterAnalytics}
-              onBack={handleBackNavigation}
-            />
-          }
-        />
+        {/* Common routes */}
+        <Route path="/" element={<LandingPage onEngineSelect={handleEngineSelection} />} />
+        <Route path="/client" element={<ClientSelectionPage engine={selectedEngine} onClientSelect={handleClientSelection} onBack={handleBackNavigation} />} />
+        <Route path="/advisor" element={<AdvisorSelectionPage client={selectedClient} onAdvisorSelect={handleAdvisorSelection} onBack={handleBackNavigation} />} />
+        <Route path="/upload" element={<FileUploadPage onFileUpload={handleFileUpload} onBack={handleBackNavigation} />} />
+
+        {/* Incommon AI specific routes */}
+        <Route path="/incommon/processing" element={
+          <OrchestratedProcessingPage
+            csvData={csvData}
+            onProcessingComplete={(data) => handleProcessingComplete(data, 'Incommon AI')}
+            onBack={handleBackNavigation}
+          />
+        } />
+        <Route path="/incommon/results" element={
+          <ResultsPage
+            processedData={processedData}
+            originalCount={csvData?.length || 0}
+            analytics={analytics}
+            finalCount={processedData ? processedData.filter(row => !row.relevanceTag).length : 0}
+            filterAnalytics={filterAnalytics}
+            onBack={handleBackNavigation}
+          />
+        } />
+
+        {/* VideoCX specific routes */}
+        <Route path="/videocx/processing" element={
+          <VideoCXProcessingPage
+            csvData={csvData}
+            onProcessingComplete={(data) => handleProcessingComplete(data, 'Video CX')}
+            onBack={handleBackNavigation}
+          />
+        } />
+        <Route path="/videocx/results" element={
+          <VideoCXResultsPage
+            processedData={processedData}
+            originalCount={csvData?.length || 0}
+            analytics={analytics}
+            finalCount={processedData ? processedData.filter(row => !row.relevanceTag).length : 0}
+            filterAnalytics={filterAnalytics}
+            onBack={handleBackNavigation}
+          />
+        } />
+
+        {/* Redirect all other routes to home */}
+        <Route path="*" element={<navigate to="/" replace />} />
       </Routes>
     </div>
   );

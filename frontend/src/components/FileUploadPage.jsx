@@ -155,8 +155,13 @@ const FileUploadPage = () => {
                 console.log(`CSV data loaded: ${enrichedData.length} rows`);
                 storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.CSV_DATA, enrichedData);
 
+                const client = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.CLIENT);
+
+                // Determine prefix
+                const prefix = client === 'Video CX' ? 'videocx' : 'incommon';
+
                 // Navigate to processing page
-                navigate('/processing');
+                navigate(`/${prefix}/processing`);
             },
             error: (error) => {
                 setUploadStatus({
