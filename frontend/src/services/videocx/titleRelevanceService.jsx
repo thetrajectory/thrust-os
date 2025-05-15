@@ -1,7 +1,7 @@
 // services/videocx/titleRelevanceService.jsx
 import apiClient from '../../utils/apiClient';
 
-// Title relevance prompt template for VideoCX
+// Title relevance prompt from the provided original
 const TITLE_RELEVANCE_PROMPT = position =>
   `## Classify Title into Enterprise Device Benefits Buyer Category ##
 Hi ChatGPT, your task is to **analyze a professional title or tagline** and classify it into **only one of the following categories**:
@@ -30,13 +30,13 @@ Use this for **decision-makers or strong influencers** in the following enterpri
 | **IT / End-User Support** | CIO, VP IT, Director End-User Computing, IT Asset Manager |
 | **Procurement / Vendor Mgmt** | Head of Procurement, Strategic Sourcing Lead, Vendor Governance Director |
 | **Ops / Cross-functional** | COO, Chief of Staff, Director of Workplace Ops |
-| **Specialist Tags** | “Total Rewards”, “Compensation”, “Benefits”, “Employee Experience”, “Payroll” — if tied to manager+ scope |
-:white_check_mark: Use only if role is **Director or above**, *or* is a **clearly scoped specialist** in a relevant function (e.g., “Compensation Manager” at 10,000+ org)
-:white_check_mark: "Manager", "Lead", or “Specialist” are valid **only** if:
+| **Specialist Tags** | "Total Rewards", "Compensation", "Benefits", "Employee Experience", "Payroll" — if tied to manager+ scope |
+:white_check_mark: Use only if role is **Director or above**, *or* is a **clearly scoped specialist** in a relevant function (e.g., "Compensation Manager" at 10,000+ org)
+:white_check_mark: "Manager", "Lead", or "Specialist" are valid **only** if:
 - Role is within a top-priority function (HR/Payroll/IT/Comp & Benefits)
 - Title clearly signals implementation responsibility, not just execution
-:x: **Do not include** generalists (e.g., “HR Manager”, “IT Analyst”) unless function is *narrowly focused* and **title + level indicate control or implementation authority**
-:arrow_right: Even if “device leasing” isn’t mentioned, ask:
+:x: **Do not include** generalists (e.g., "HR Manager", "IT Analyst") unless function is *narrowly focused* and **title + level indicate control or implementation authority**
+:arrow_right: Even if "device leasing" isn't mentioned, ask:
 *Does this title suggest the person could reasonably design, approve, or run a modern, scalable employee benefit or device program tied to payroll or IT workflows?*
 If yes → **Relevant**
 ---
@@ -44,12 +44,12 @@ If yes → **Relevant**
 Use for:
 - **All unrelated functions**, such as Sales, Marketing, Customer Success, Legal, Admin, Country Mgmt
 - **All junior roles**, regardless of function
-- **Generic titles** like “Business Head” or “Strategy Lead” unless grounded in a relevant function
+- **Generic titles** like "Business Head" or "Strategy Lead" unless grounded in a relevant function
 - **Broad talent/people/ops roles** with no visible link to payroll, benefits, or asset provisioning
 **Examples:**
 - Sales Director, Marketing VP, HR Executive, Talent Acquisition Lead, Country Manager
 - Product Analyst, Finance Associate, IT Support Executive, Procurement Trainee
-- “Business Strategy Lead” (unless nested in HR/IT/Payroll context)
+- "Business Strategy Lead" (unless nested in HR/IT/Payroll context)
 ---
 ### 'Job Title Input' starts ###
 ${position}
@@ -62,10 +62,9 @@ ${position}
 Return only the final output. No introductions, no explanations—just the output.
 ## :label: Tagging Logic
 - **Founders**: Use only when founding roles are explicitly stated (Founder, Co-Founder, etc.)
-- **Relevant**: Use for all **director seniority** posts like: Chairman, CEO, CSO, CRO, President, Titles from HR, Payroll, IT, Ops, and Finance with **director+ seniority** or **narrow specialist scope** (Comp/Benefits/Rewards/etc.)
+- **Relevant**: Use for all **director seniority** posts like: CEOs, CSOs, CROs, Presidents, Titles from HR, Payroll, IT, Ops, and Finance with **director+ seniority** or **narrow specialist scope** (Comp/Benefits/Rewards/etc.)
 - **Irrelevant**: All others—especially generalists, juniors, or roles with no clear authority or linkage to device benefits
-Return only the final output. No introductions, no explanations—just the output.
-`;
+Return only the final output. No introductions, no explanations—just the output.`;
 
 /**
  * Process title relevance for a batch of data
@@ -75,11 +74,11 @@ Return only the final output. No introductions, no explanations—just the outpu
  * @returns {Promise<Object>} - Object containing processed data and analytics
  */
 export async function processTitleRelevance(data, logCallback, progressCallback) {
-  logCallback("Starting VideoCX Title Relevance Analysis...");
+  logCallback("Starting Title Relevance Analysis...");
 
   // Get configuration from environment
   const apiKey = import.meta.env.VITE_REACT_APP_OPENAI_API_KEY;
-  const model = import.meta.env.VITE_REACT_APP_TITLE_RELEVANCE_MODEL || "gpt-4o-mini";
+  const model = import.meta.env.VITE_REACT_APP_TITLE_RELEVANCE_MODEL;
   const batchSize = parseInt(import.meta.env.VITE_REACT_APP_TITLE_RELEVANCE_BATCH_SIZE || "100");
 
   const startTimestamp = Date.now();
@@ -92,7 +91,7 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
   const processedData = [...data];
 
   // Track analytics
-  let decisionMakerCount = 0;
+  let founderCount = 0;
   let relevantCount = 0;
   let irrelevantCount = 0;
   let errorCount = 0;
@@ -111,7 +110,7 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
       const index = i + j;
       const row = data[index];
 
-      // Skip processing if row is already tagged
+      // Skip processing if row is already tagged - unlikely in title relevance step as it's the first step
       if (row.relevanceTag) {
         logCallback(`Skipping item ${index + 1}: Already tagged as "${row.relevanceTag}"`);
         skippedCount++;
@@ -130,7 +129,7 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
 
           // Update analytics
           if (result.data.titleRelevance === 'Founder') {
-            decisionMakerCount++;
+            founderCount++;
           } else if (result.data.titleRelevance === 'Relevant') {
             relevantCount++;
           } else if (result.data.titleRelevance === 'Irrelevant') {
@@ -182,7 +181,7 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
 
   // Log analysis summary
   logCallback(`Title Relevance Analysis Complete:`);
-  logCallback(`- Decision Makers: ${decisionMakerCount}`);
+  logCallback(`- Founders: ${founderCount}`);
   logCallback(`- Relevant: ${relevantCount}`);
   logCallback(`- Irrelevant: ${irrelevantCount}`);
   logCallback(`- Skipped: ${skippedCount}`);
@@ -193,14 +192,14 @@ export async function processTitleRelevance(data, logCallback, progressCallback)
   return {
     data: processedData,
     analytics: {
-      decisionMakerCount,
+      founderCount,
       relevantCount,
       irrelevantCount,
       skippedCount,
       errorCount,
       tokensUsed,
       totalProcessed: data.length - skippedCount,
-      startTime: startTimestamp,
+      startTimes: startTimestamp,
       endTime: endTimestamp,
       processingTimeSeconds: processingTimeSeconds
     }
@@ -233,60 +232,112 @@ async function processSingleTitle(row, index, apiKey, model, logCallback) {
   }
 
   try {
-    logCallback(`Analyzing position: "${position}"`);
+    logCallback(`Analyzing position: ${position}`);
 
     // Call OpenAI API
     const result = await callOpenAIAPI(position, apiKey, model);
+
     const tokenUsage = result.totalTokens || 0;
 
-    // Extract and normalize the response to lowercase for consistent matching
+    // Extract and normalize the response
     const responseText = result.completion.trim().toLowerCase();
 
     // Log the raw response
     logCallback(`Raw model response: "${result.completion.trim()}"`);
 
-    // Check for founder titles in both the response and the position
-    const isFounderInTitle = position.toLowerCase().includes('founder') ||
-      position.toLowerCase().includes('ceo') ||
-      position.toLowerCase().includes('president') ||
-      position.toLowerCase().includes('chairman');
-
+    // Determine relevance category based on normalized response and position
     let relevance;
     let score;
 
-    // Strict case-insensitive matching against expected categories
-    if (responseText === 'founder' || (responseText.includes('founder') && !responseText.includes('not'))) {
+    // EXACT TEXT MATCH (case-insensitive)
+    if (responseText === 'founder') {
       relevance = 'Founder';
       score = 3; // Highest priority
-    } else if (responseText === 'relevant' || responseText.includes('relevant')) {
+    } else if (responseText === 'relevant') {
       relevance = 'Relevant';
       score = 2; // Medium priority
-    } else if (responseText === 'irrelevant' || responseText.includes('irrelevant')) {
+    } else if (responseText === 'irrelevant') {
       relevance = 'Irrelevant';
       score = 0; // No priority
     } else {
-      // For ambiguous responses, check the position title
-      if (isFounderInTitle) {
+      // FALLBACK: If no exact match, look for keywords in the response
+      if (responseText.includes('founder') && !responseText.includes('not founder')) {
         relevance = 'Founder';
         score = 3;
-        logCallback(`Fallback: Position "${position}" appears to be founder-related, classified as Founder`);
-      } else if (responseText.includes('decision') || responseText.includes('executive') || responseText.includes('c-suite')) {
+      } else if (responseText.includes('relevant') && !responseText.includes('irrelevant')) {
         relevance = 'Relevant';
         score = 2;
-        logCallback(`Fallback: Position "${position}" appears to be executive/decision-making, classified as Relevant`);
-      } else {
-        // Default fallback
+      } else if (responseText.includes('irrelevant')) {
         relevance = 'Irrelevant';
         score = 0;
-        logCallback(`Fallback: Unknown classification "${responseText}" for position "${position}", defaulting to Irrelevant`);
+      } else {
+        // SECONDARY FALLBACK: If no keywords in response, analyze the position
+        const positionLower = position.toLowerCase();
+        
+        // Check for clear founder indicators
+        if (
+          positionLower.includes('founder') || 
+          positionLower.includes('co-founder') ||
+          positionLower.includes('founding')
+        ) {
+          relevance = 'Founder';
+          score = 3;
+          logCallback(`Position-based classification: "${position}" -> Founder`);
+        }
+        // Check for C-suite and director+ positions in relevant departments
+        else if (
+          (
+            (positionLower.includes('ceo') || 
+             positionLower.includes('cfo') || 
+             positionLower.includes('cio') || 
+             positionLower.includes('cto') ||
+             positionLower.includes('president') ||
+             positionLower.includes('chief') ||
+             positionLower.includes('director') ||
+             positionLower.includes('head of') ||
+             positionLower.includes('vp ') ||
+             positionLower.includes('vice president')) 
+             &&
+            (positionLower.includes('hr') ||
+             positionLower.includes('human resource') ||
+             positionLower.includes('people') ||
+             positionLower.includes('finance') ||
+             positionLower.includes('payroll') ||
+             positionLower.includes('it') ||
+             positionLower.includes('information technology') ||
+             positionLower.includes('procurement') ||
+             positionLower.includes('operations') ||
+             positionLower.includes('benefits') ||
+             positionLower.includes('compensation'))
+          )
+        ) {
+          relevance = 'Relevant';
+          score = 2;
+          logCallback(`Position-based classification: "${position}" -> Relevant (senior role in relevant department)`);
+        }
+        // Check for specialized roles in relevant areas
+        else if (
+          (positionLower.includes('benefits') ||
+           positionLower.includes('compensation') ||
+           positionLower.includes('total rewards') ||
+           positionLower.includes('payroll') ||
+           positionLower.includes('it asset')) &&
+          (positionLower.includes('manager') ||
+           positionLower.includes('lead') ||
+           positionLower.includes('specialist') ||
+           positionLower.includes('administrator'))
+        ) {
+          relevance = 'Relevant';
+          score = 2;
+          logCallback(`Position-based classification: "${position}" -> Relevant (specialized role)`);
+        }
+        // All other positions default to Irrelevant
+        else {
+          relevance = 'Irrelevant';
+          score = 0;
+          logCallback(`Position-based classification: "${position}" -> Irrelevant (default)`);
+        }
       }
-    }
-
-    // Additional check - override if position is clearly a founder
-    if (isFounderInTitle && relevance !== 'Founder') {
-      logCallback(`Override: Position "${position}" contains founder/executive terms but was classified as ${relevance}. Changing to Founder.`);
-      relevance = 'Founder';
-      score = 3;
     }
 
     return {
@@ -325,12 +376,12 @@ async function callOpenAIAPI(position, apiKey, model) {
   // Create the prompt
   const prompt = TITLE_RELEVANCE_PROMPT(position);
 
-  // Set up the request using the apiClient
+  // Set up the request
   try {
     const response = await apiClient.openai.chatCompletion({
       model: model || 'gpt-4o-mini',
       messages: [
-        { role: "system", content: "You are an expert in classifying executive titles for VideoCX." },
+        { role: "system", content: "You are an expert in classifying executive titles." },
         { role: "user", content: prompt }
       ],
       max_tokens: 10, // Very short response needed
