@@ -41,17 +41,33 @@ function isDataStale(updatedAt, createdAt) {
  * @returns {string} - Formatted prompt
  */
 function getCompanyTypePrompt(companyName, companyUrl, companyLinkedinUrl) {
-  return `## Classify Company as Public or Private ##
+  return `"You will receive the following information about a company:
+- Company Name: ${companyName}
+- Company Website URL: ${companyUrl}
+- Company LinkedIn URL: ${companyLinkedinUrl}
 
-I need to determine if the following company is publicly traded (listed on a stock exchange) or privately held:
+Your task:
+1. Determine if the company is **Public** (publicly traded) or **Private** (privately held).
+2. To decide:
+   - If the LinkedIn page indicates ""Public Company"" as the company type → classify as **Public**.
+   - If the LinkedIn page indicates ""Privately Held"" → classify as **Private**.
+   - If company website shows clear evidence of being publicly listed (e.g., Investor Relations, Stock Ticker, SEC filings) → classify as **Public**.
+   - If company website shows no investor information, no stock ticker, or indicates venture capital/private ownership → classify as **Private**.
+   - If LinkedIn and website are inconclusive, base the decision on the nature and size of the company name (well-known brands like Apple, Google are **Public**; unknown startups and agencies are **Private**).
+3. Do not guess beyond these rules.
 
-Company Name: ${companyName || 'Unknown'}
-Company Website: ${companyUrl || 'Unknown'}
-Company LinkedIn: ${companyLinkedinUrl || 'Unknown'}
+Final Output:
+- Only return either **""Public""** or **""Private""**.
+- Do not add any explanation, text, or comments.
 
-Please respond with ONLY ONE WORD: either "Public" if the company is publicly traded on any stock exchange worldwide, or "Private" if it is privately held.
+Input:
+- Company Name: {{COMPANY_NAME}}
+- Company Website: {{COMPANY_URL}}
+- Company LinkedIn URL: {{COMPANY_LINKEDIN_URL}}
 
-Your response must be exactly "Public" or "Private" with no other text, explanations or qualifiers.`;
+Output:
+(Public or Private only)
+"`;
 }
 
 /**
@@ -151,29 +167,29 @@ export async function processPublicCompanyFilter(data, logCallback, progressCall
         // Check if company data is fresh
         if (companyData && !isDataStale(companyData.updated_at, companyData.created_at) && companyData.company_type) {
           logCallback(`Using existing company type from database for ${companyName}: ${companyData.company_type}`);
-          
+
           // Update the row with the company type
           const isPublic = companyData.company_type === 'Public';
           processedData[index].companyType = companyData.company_type;
           processedData[index].isPublicCompany = isPublic;
-          
+
           if (isPublic) {
             publicCount++;
           } else {
             privateCount++;
           }
-          
+
           supabaseHits++;
         } else {
           // Need to determine company type using GPT
           logCallback(`Determining company type for ${companyName} using GPT`);
-          
+
           // Generate prompt with company details
           const prompt = getCompanyTypePrompt(companyName, companyUrl, companyLinkedinUrl);
-          
+
           // Store the prompt in the result for debugging
           processedData[index].companyTypePrompt = prompt;
-          
+
           // Call GPT to determine company type
           const response = await apiClient.openai.chatCompletion({
             model: model,
@@ -184,12 +200,12 @@ export async function processPublicCompanyFilter(data, logCallback, progressCall
             temperature: 0.2,
             max_tokens: 10
           });
-          
+
           // Process response
           let companyType = "Unknown";
           if (response && response.choices && response.choices.length > 0) {
             const gptResponse = response.choices[0].message.content.trim();
-            
+
             // Ensure we get a clean "Public" or "Private" response
             if (gptResponse.toLowerCase() === "public") {
               companyType = "Public";
@@ -203,10 +219,10 @@ export async function processPublicCompanyFilter(data, logCallback, progressCall
                 companyType = "Private";
               }
             }
-            
+
             // Log the received response and the interpreted type
             logCallback(`GPT response for ${companyName}: "${gptResponse}" → Interpreted as: ${companyType}`);
-            
+
             // Track token usage
             if (response.usage) {
               tokensUsed += response.usage.total_tokens || 0;
@@ -214,17 +230,17 @@ export async function processPublicCompanyFilter(data, logCallback, progressCall
           } else {
             logCallback(`No valid response from GPT for ${companyName}`);
           }
-          
+
           const isPublic = companyType === "Public";
           processedData[index].companyType = companyType;
           processedData[index].isPublicCompany = isPublic;
-          
+
           if (isPublic) {
             publicCount++;
           } else {
             privateCount++;
           }
-          
+
           // Update the database if available
           if (supabaseAvailable) {
             if (companyData) {
@@ -236,7 +252,7 @@ export async function processPublicCompanyFilter(data, logCallback, progressCall
                   updated_at: new Date().toISOString()
                 })
                 .eq('apollo_org_id', orgId);
-                
+
               if (error) {
                 logCallback(`Error updating company type in database: ${error.message}`);
               }
@@ -252,7 +268,7 @@ export async function processPublicCompanyFilter(data, logCallback, progressCall
                   created_at: new Date().toISOString(),
                   updated_at: new Date().toISOString()
                 });
-                
+
               if (error) {
                 logCallback(`Error inserting company type in database: ${error.message}`);
               }
@@ -267,11 +283,11 @@ export async function processPublicCompanyFilter(data, logCallback, progressCall
         errorCount++;
         processedData[index].companyType = 'Error';
         processedData[index].isPublicCompany = false;
-        
+
         // Update progress even on error
         progressCallback((index + 1) / data.length * 100);
       }
-      
+
       // Add a small delay between items to avoid API rate limits
       await new Promise(resolve => setTimeout(resolve, 500));
     }
