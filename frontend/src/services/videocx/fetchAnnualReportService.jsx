@@ -195,7 +195,7 @@ export async function fetchAnnualReports(data, logCallback, progressCallback) {
                 if (supabaseAvailable) {
                     const { data: dbData, error } = await supabase
                         .from('orgs_db')
-                        .select('annual_report_url, updated_at, created_at')
+                        .select('annual_report_pdf, updated_at, created_at')
                         .eq('apollo_org_id', orgId)
                         .maybeSingle();
 
@@ -207,15 +207,15 @@ export async function fetchAnnualReports(data, logCallback, progressCallback) {
                 // Check if annual report URL is fresh
                 if (companyData &&
                     !isDataStale(companyData.updated_at, companyData.created_at) &&
-                    companyData.annual_report_url &&
-                    companyData.annual_report_url !== "NO_SUITABLE_REPORT_FOUND") {
+                    companyData.annual_report_pdf &&
+                    companyData.annual_report_pdf !== "NO_SUITABLE_REPORT_FOUND") {
 
-                    logCallback(`Using existing annual report URL from database for ${companyName}: ${companyData.annual_report_url}`);
+                    logCallback(`Using existing annual report URL from database for ${companyName}: ${companyData.annual_report_pdf}`);
 
                     // Update the row with the annual report URL
                     processedData[index] = {
                         ...processedData[index],
-                        annualReportUrl: companyData.annual_report_url,
+                        annualReportUrl: companyData.annual_report_pdf,
                         annualReportSource: 'supabase'
                     };
 
@@ -223,7 +223,7 @@ export async function fetchAnnualReports(data, logCallback, progressCallback) {
                     reportsFetched++;
                 } else if (companyData &&
                     !isDataStale(companyData.updated_at, companyData.created_at) &&
-                    companyData.annual_report_url === "NO_SUITABLE_REPORT_FOUND") {
+                    companyData.annual_report_pdf === "NO_SUITABLE_REPORT_FOUND") {
 
                     logCallback(`No suitable annual report found for ${companyName} (from cache)`);
 
@@ -466,7 +466,7 @@ async function updateSupabaseRecord(orgId, companyName, reportUrl, logCallback) 
             const { error: updateError } = await supabase
                 .from('orgs_db')
                 .update({
-                    annual_report_url: reportUrl,
+                    annual_report_pdf: reportUrl,
                     updated_at: now
                 })
                 .eq('apollo_org_id', orgId);
@@ -484,7 +484,7 @@ async function updateSupabaseRecord(orgId, companyName, reportUrl, logCallback) 
                 .insert({
                     apollo_org_id: orgId,
                     company_name: companyName,
-                    annual_report_url: reportUrl,
+                    annual_report_pdf: reportUrl,
                     created_at: now,
                     updated_at: now
                 });
