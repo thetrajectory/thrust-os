@@ -622,7 +622,12 @@ class VideoCXOrchestrator {
                         return row;
                     }
 
-                    if (row.titleRelevance === 'Founder' || row.titleRelevance === 'Relevant' || row.titleRelevance === 'founder' || row.titleRelevance === 'relevant') {
+                    // Debug log to see the actual value
+                    this.addLog(`Debug - titleRelevance value: '${row.titleRelevance}', type: ${typeof row.titleRelevance}`);
+
+                    // Add more robust check for Relevant or Founder
+                    const titleLower = (row.titleRelevance || '').toLowerCase();
+                    if (titleLower === 'founder' || titleLower === 'relevant') {
                         untaggedCount++;
                         return row; // No tag for Founder or Relevant
                     } else {
