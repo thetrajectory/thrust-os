@@ -3,84 +3,68 @@ import axios from 'axios';
 
 // Title relevance prompt template for VideoCX
 const TITLE_RELEVANCE_PROMPT = position =>
-  `## Classify Title into VideoCX-Relevant Category ##
-
+  `## Classify Title into Enterprise Device Benefits Buyer Category ##
 Hi ChatGPT, your task is to **analyze a professional title or tagline** and classify it into **only one of the following categories**:
-
-- **Decision Maker**
+- **Founder**
 - **Relevant**
 - **Irrelevant**
-
-You must classify based on whether the person is likely to **influence or make decisions** related to **video-based customer experience solutions**.
-
+You must classify based on whether the person is likely to **influence or make decisions** related to **employee device benefit programs**, **leasing workflows**, or **orchestrating HR-Finance-IT coordination** in **large enterprises (500+ employees)**.
 ---
-
-### 🧠 Category Definitions & Rules
-
-#### **Decision Maker**  
-Use **only** if the title includes clear decision-making authority:
-- ✅ **CEO**, **CXO**, **Founder**, **Co-Founder**, **VP** or **Head** of Customer Experience
-- ✅ **Director of** Digital Experience, Customer Success, Customer Support, or Marketing
-- ✅ **Product Owner** or **Product Manager** for customer-facing products
-- ❌ Do **not** classify general managers or non-executive roles unless they have clear decision authority
-
+### :brain: Category Definitions & Rules
+#### **Founder**
+Use **only** if the title includes clear founding language:
+- :white_check_mark: **Founder**, **Co-Founder**, **Founding Partner**, or **Founding CTO**
+- :white_check_mark: CEO or Managing Director **only if founding is clearly implied**
+- :x: Do **not** classify COOs, Presidents, or other CXOs as "Founder" unless explicitly labeled as such
 ---
-
-#### **Relevant**  
-Use this for **senior professionals in the following functions only**:
-
-- **Customer Experience Teams**  
-  - Customer Experience Manager, UX Lead, Customer Journey Specialist
-
-- **Marketing Teams**  
-  - Digital Marketing Manager, Marketing Director, Brand Experience Lead
-
-- **Product Teams**  
-  - Product Manager, Product Development Lead, UX/UI Manager
-
-- **Support/Success Teams**  
-  - Customer Success Manager, Support Team Lead, Client Relationship Manager
-
-✅ Titles must be **mid-senior or above**
-❌ Exclude if junior (e.g., Associate, Analyst, Intern, Executive)
-
-➡️ Ask yourself:  
-*Does this title suggest someone who decides on or significantly influences customer experience technology decisions?*
-
+#### **Relevant**
+Use this for **decision-makers or strong influencers** in the following enterprise functions — especially those who:
+- Control payroll, IT provisioning, or benefits workflows
+- Coordinate across HR, IT, and Finance
+- Implement or scale employee-facing perks, leasing, or compensation-linked infra
+**Accepted Functions & Titles:**
+| Function | Typical Relevant Titles |
+|----------|-------------------------|
+| **People/HR** | CHRO, VP People, Head of HR, Director People Ops, Total Rewards Lead, Benefits Program Manager, Compensation Lead |
+| **Finance/Payroll** | CFO, VP Finance, Head of Payroll, Director FP&A, Controller, Senior Payroll Manager |
+| **IT / End-User Support** | CIO, VP IT, Director End-User Computing, IT Asset Manager |
+| **Procurement / Vendor Mgmt** | Head of Procurement, Strategic Sourcing Lead, Vendor Governance Director |
+| **Ops / Cross-functional** | COO, Chief of Staff, Director of Workplace Ops |
+| **Specialist Tags** | “Total Rewards”, “Compensation”, “Benefits”, “Employee Experience”, “Payroll” — if tied to manager+ scope |
+:white_check_mark: Use only if role is **Director or above**, *or* is a **clearly scoped specialist** in a relevant function (e.g., “Compensation Manager” at 10,000+ org)
+:white_check_mark: "Manager", "Lead", or “Specialist” are valid **only** if:
+- Role is within a top-priority function (HR/Payroll/IT/Comp & Benefits)
+- Title clearly signals implementation responsibility, not just execution
+:x: **Do not include** generalists (e.g., “HR Manager”, “IT Analyst”) unless function is *narrowly focused* and **title + level indicate control or implementation authority**
+:arrow_right: Even if “device leasing” isn’t mentioned, ask:
+*Does this title suggest the person could reasonably design, approve, or run a modern, scalable employee benefit or device program tied to payroll or IT workflows?*
 If yes → **Relevant**
-
 ---
-
-#### **Irrelevant**  
+#### **Irrelevant**
 Use for:
-- **All other functions**, including Engineering (unless CTO), Finance, HR, Legal, Procurement
-- **All junior roles**, regardless of department
-- **Ambiguous titles** with no strong functional signal
-
-**Examples:**  
-- Software Engineer, Finance Director, HR Business Partner, Talent Acquisition Lead, Business Analyst
-- Customer Service Representative, Social Media Intern, Marketing Coordinator  
-
+- **All unrelated functions**, such as Sales, Marketing, Customer Success, Legal, Admin, Country Mgmt
+- **All junior roles**, regardless of function
+- **Generic titles** like “Business Head” or “Strategy Lead” unless grounded in a relevant function
+- **Broad talent/people/ops roles** with no visible link to payroll, benefits, or asset provisioning
+**Examples:**
+- Sales Director, Marketing VP, HR Executive, Talent Acquisition Lead, Country Manager
+- Product Analyst, Finance Associate, IT Support Executive, Procurement Trainee
+- “Business Strategy Lead” (unless nested in HR/IT/Payroll context)
 ---
-
 ### 'Job Title Input' starts ###
-
 ${position}
-
 ### 'Job Title Input' ends ###
-
 ---
-
 ## Ideal output format starts ##
-
-[One of: Decision Maker | Relevant | Irrelevant]
-
+[One of: Founder | Relevant | Irrelevant]
 ## Ideal output format ends ##
-
 ---
-
-IMPORTANT: Return ONLY the final category name. No introductions, no explanations, no other text—just one of these three words: Decision Maker, Relevant, or Irrelevant.`;
-
+Return only the final output. No introductions, no explanations—just the output.
+## :label: Tagging Logic
+- **Founders**: Use only when founding roles are explicitly stated (Founder, Co-Founder, etc.)
+- **Relevant**: Titles from HR, Payroll, IT, Ops, and Finance with **director+ seniority** or **narrow specialist scope** (Comp/Benefits/Rewards/etc.)
+- **Irrelevant**: All others—especially generalists, juniors, or roles with no clear authority or linkage to device benefits
+Return only the final output. No introductions, no explanations—just the output.`
 /**
  * Process title relevance for a batch of data for VideoCX engine
  * @param {Array} data - Array of lead data objects
