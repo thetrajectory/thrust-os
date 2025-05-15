@@ -100,7 +100,7 @@ export async function processApolloEnrichment(data, logCallback, progressCallbac
   // Check if Supabase is available by making a test query
   let supabaseAvailable = true;
   try {
-    const { error } = await supabase.from('leads_videocx').select('count').limit(1);
+    const { error } = await supabase.from('leads_db').select('count').limit(1);
     if (error) {
       logCallback(`⚠️ Supabase connection issue: ${error.message}`);
       supabaseAvailable = false;
@@ -278,7 +278,7 @@ async function upsertToSupabase(linkedinUrl, personId, data, fullName) {
   try {
     // Check if record exists
     const { data: existingRecord, error: fetchError } = await supabase
-      .from('leads_videocx') // Use VideoCX specific table
+      .from('leads_db') // Use VideoCX specific table
       .select('apollo_person_id')
       .eq('linkedin_url', linkedinUrl)
       .maybeSingle();
@@ -303,7 +303,7 @@ async function upsertToSupabase(linkedinUrl, personId, data, fullName) {
     if (existingRecord) {
       // Update existing record
       const { error: updateError } = await supabase
-        .from('leads_videocx')
+        .from('leads_db')
         .update({
           apollo_person_id: personId,
           apollo_json: apolloJsonString,
@@ -316,7 +316,7 @@ async function upsertToSupabase(linkedinUrl, personId, data, fullName) {
     } else {
       // Insert new record
       const { error: insertError } = await supabase
-        .from('leads_videocx')
+        .from('leads_db')
         .insert({
           connected_to: data.advisorName || null,
           full_name: fullName,
@@ -407,7 +407,7 @@ async function processApolloLead(row, index, apiKey, logCallback, isIrrelevant =
 
       try {
         const { data: cachedRows, error: fetchError } = await supabase
-          .from('leads_videocx') // Use VideoCX specific table
+          .from('leads_db') // Use VideoCX specific table
           .select('*')
           .eq('linkedin_url', linkedinUrl)
           .maybeSingle();
