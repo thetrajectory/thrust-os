@@ -39,7 +39,7 @@ function isDataStale(updatedAt, createdAt) {
  * @param {Array} searchResults - Array of search results
  * @returns {string} - Formatted prompt
  */
-const ANNUAL_REPORT_PROMPT = (searchResults) => {
+const ANNUAL_REPORT_PROMPT = (companyName, searchResults) => {
     return `You will receive the top 10 Serper search results related to a company’s annual report. Each result includes:
 - A title (usually starting with “[PDF]”)
 - A second line which contains the URL of the PDF or source document.
@@ -49,7 +49,7 @@ Your task is to:
 1. Go through **all 10 results carefully**.
 2. From the titles, identify the **single most appropriate result** for the company’s **2024 Annual Report** or **10-K filing**.
    - Prefer results that include:  
-     • “[PDF] <Company Name> annual report 2024”  
+     • “[PDF] ${companyName} annual report 2024”  
      • “Form 10-K annual report 2024”  
      • “Annual report filed in 2024”  
      • “Annual form 10-k filed [date in 2024]”
@@ -67,49 +67,22 @@ Only return the PDF URL from the most relevant result. If nothing is relevant, r
 };
 
 /**
- * Format search results to extract only the PDF links for the prompt
+ * Format search results for the prompt
  * @param {Object} searchResults - The raw search results from Serper
- * @returns {string} - Formatted list of PDF links
+ * @returns {string} - Formatted list of search results
  */
-function formatResults(searchResults) {
+function formatSearchResults(searchResults) {
     try {
-        // Check if there was an error
-        if (searchResults.error) {
-            return `Error: ${searchResults.error}`;
+        if (!searchResults || !searchResults.organic || !Array.isArray(searchResults.organic)) {
+            return "No valid search results found";
         }
 
-        // Check if there are organic results
-        if (!searchResults.organic || searchResults.organic.length === 0) {
-            return "No results found";
-        }
-
-        // Filter for PDF links first
-        const pdfResults = searchResults.organic.filter(result =>
-            result.link && result.link.toLowerCase().endsWith('.pdf')
-        );
-
-        // If no PDF links found, look for links containing "pdf" in the URL
-        let relevantResults = pdfResults.length > 0 ? pdfResults :
-            searchResults.organic.filter(result =>
-                result.link && result.link.toLowerCase().includes('.pdf')
-            );
-
-        // If still no results, use all organic results
-        if (relevantResults.length === 0) {
-            relevantResults = searchResults.organic;
-        }
-
-        // Get up to 10 results
-        const limitedResults = relevantResults.slice(0, 10);
-
-        // Extract just the links and format as a numbered list
-        const formattedLinks = limitedResults.map((result, index) => {
-            return `${index + 1}. ${result.link}`;
+        // Format each result into a numbered list with title, link and snippet
+        return searchResults.organic.map((result, index) => {
+            return `${index + 1}. Title: ${result.title || 'No title'}\n   Link: ${result.link || 'No link'}\n   Snippet: ${result.snippet || 'No snippet'}\n   Date: ${result.date || 'No date'}\n`;
         }).join("\n");
-
-        return formattedLinks;
     } catch (error) {
-        console.error(`Error in formatResults function: ${error.message}`);
+        console.error(`Error formatting search results: ${error.message}`);
         return `Error formatting results: ${error.message}`;
     }
 }
@@ -133,7 +106,7 @@ export async function fetchAnnualReports(data, logCallback, progressCallback) {
     // Get configuration from environment
     const serperApiKey = import.meta.env.VITE_REACT_APP_SERPER_API_KEY;
     const openaiApiKey = import.meta.env.VITE_REACT_APP_OPENAI_API_KEY;
-    const model = import.meta.env.VITE_REACT_APP_COMPANY_RELEVANCE_MODEL;
+    const model = import.meta.env.VITE_REACT_APP_COMPANY_RELEVANCE_MODEL || "gpt-4o-mini";
     const batchSize = parseInt(import.meta.env.VITE_REACT_APP_ANNUAL_REPORT_BATCH_SIZE || "5");
 
     if (!serperApiKey) {
@@ -230,7 +203,7 @@ export async function fetchAnnualReports(data, logCallback, progressCallback) {
                     // Update the row with the report not found status
                     processedData[index] = {
                         ...processedData[index],
-                        annualReportUrl: null,
+                        annualReportUrl: "NO_SUITABLE_REPORT_FOUND",
                         annualReportSource: 'supabase',
                         annualReportStatus: 'not_found'
                     };
@@ -253,20 +226,20 @@ export async function fetchAnnualReports(data, logCallback, progressCallback) {
                             num: 10     // Number of results
                         });
 
-                        if (!searchResponse || !searchResponse.organic) {
-                            throw new Error('Invalid Serper API response');
+                        if (!searchResponse) {
+                            throw new Error('Invalid or empty Serper API response');
                         }
 
-                        // Extract the organic search results
-                        const organicResults = searchResponse.organic || [];
+                        // Format the search results for the prompt
+                        const formattedResults = formatSearchResults(searchResponse);
 
-                        if (organicResults.length === 0) {
+                        if (!formattedResults || formattedResults.includes('No valid search results found')) {
                             logCallback(`No search results found for ${companyName}`);
 
                             // Update the row with the report not found status
                             processedData[index] = {
                                 ...processedData[index],
-                                annualReportUrl: null,
+                                annualReportUrl: "NO_SUITABLE_REPORT_FOUND",
                                 annualReportSource: 'serper',
                                 annualReportStatus: 'no_results'
                             };
@@ -284,9 +257,8 @@ export async function fetchAnnualReports(data, logCallback, progressCallback) {
                             reportsNotFound++;
                         } else {
                             // Step 2: Use LLM to analyze results and find best URL
-                            const formattedResults = formatResults(organicResults);
-                            const prompt = ANNUAL_REPORT_PROMPT(formattedResults);
-                            logCallback(`Analyzing ${organicResults.length} search results using LLM`);
+                            const prompt = ANNUAL_REPORT_PROMPT(companyName, formattedResults);
+                            logCallback(`Analyzing ${searchResponse.organic?.length || 0} search results using LLM`);
 
                             // Call OpenAI to analyze search results
                             const llmResponse = await apiClient.openai.chatCompletion({
@@ -310,6 +282,7 @@ export async function fetchAnnualReports(data, logCallback, progressCallback) {
                                     reportsFetched++;
                                 } else {
                                     logCallback(`No suitable annual report found for ${companyName}`);
+                                    reportUrl = "NO_SUITABLE_REPORT_FOUND";
                                     reportsNotFound++;
                                 }
 
@@ -319,6 +292,7 @@ export async function fetchAnnualReports(data, logCallback, progressCallback) {
                                 }
                             } else {
                                 logCallback(`Error analyzing search results for ${companyName}`);
+                                reportUrl = "NO_SUITABLE_REPORT_FOUND";
                                 reportsNotFound++;
                             }
 
@@ -327,7 +301,7 @@ export async function fetchAnnualReports(data, logCallback, progressCallback) {
                                 ...processedData[index],
                                 annualReportUrl: reportUrl,
                                 annualReportSource: 'serper+llm',
-                                annualReportStatus: reportUrl ? 'found' : 'not_found'
+                                annualReportStatus: reportUrl !== "NO_SUITABLE_REPORT_FOUND" ? 'found' : 'not_found'
                             };
 
                             // Save to Supabase
@@ -335,7 +309,7 @@ export async function fetchAnnualReports(data, logCallback, progressCallback) {
                                 await updateSupabaseRecord(
                                     orgId,
                                     companyName,
-                                    reportUrl || "NO_SUITABLE_REPORT_FOUND",
+                                    reportUrl,
                                     logCallback
                                 );
                             }
@@ -349,7 +323,7 @@ export async function fetchAnnualReports(data, logCallback, progressCallback) {
                         // Update the row with the error
                         processedData[index] = {
                             ...processedData[index],
-                            annualReportUrl: null,
+                            annualReportUrl: "NO_SUITABLE_REPORT_FOUND",
                             annualReportSource: 'error',
                             annualReportStatus: 'api_error',
                             annualReportError: serperError.message
@@ -368,7 +342,7 @@ export async function fetchAnnualReports(data, logCallback, progressCallback) {
                 // Update the row with the error
                 processedData[index] = {
                     ...processedData[index],
-                    annualReportUrl: null,
+                    annualReportUrl: "NO_SUITABLE_REPORT_FOUND",
                     annualReportSource: 'error',
                     annualReportStatus: 'general_error',
                     annualReportError: error.message
