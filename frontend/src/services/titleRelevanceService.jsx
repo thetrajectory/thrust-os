@@ -40,6 +40,9 @@ Use this for **senior decision-makers in the following four functions only**:
 - **Finance Leadership**  
   - CFO, VP Finance, Finance Director, Head of FP&A
 
+- **Director Senority Posts**  
+  - CEO, COO, VP, President, Chairman, Vice President etc. 
+
 ✅ Titles must be **mid-senior or above**
 ❌ Exclude if junior (e.g., Associate, Analyst, Intern, Executive)
 
