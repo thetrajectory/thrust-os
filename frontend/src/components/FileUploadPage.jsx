@@ -183,6 +183,8 @@ const FileUploadPage = () => {
         navigate('/advisor');
     };
 
+    const templateUrl = "https://docs.google.com/spreadsheets/d/1qBb3oMdwjk6yJHFSQXrbZmXTiC072oNXL1X45hkczDc/edit?usp=sharing";
+
     return (
         <div className="flex flex-col items-center justify-center">
             <button
@@ -196,6 +198,18 @@ const FileUploadPage = () => {
             </h2>
 
             <div className="w-full max-w-lg">
+                <div className="mb-4 text-center">
+                    <p className="text-gray-700 mb-2">Need a template? Use this spreadsheet format:</p>
+                    <a
+                        href={templateUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline font-medium"
+                    >
+                        Download CSV Template
+                    </a>
+                </div>
+
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center mb-8">
                     <input
                         type="file"
@@ -235,8 +249,7 @@ const FileUploadPage = () => {
                     <ul className="list-disc pl-5 mt-2 space-y-1">
                         <li>Title Relevance Analysis</li>
                         <li>Apollo Lead Enrichment</li>
-                        <li>Employment History Analysis</li>
-                        <li>Connection Time Calculation</li>
+                        <li>Other Enrichments Specific to Client</li>
                     </ul>
                     <p className="mt-2">You'll be able to monitor the progress of each step and download the final enriched CSV when complete.</p>
                 </div>
