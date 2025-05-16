@@ -155,10 +155,17 @@ const FileUploadPage = () => {
                 console.log(`CSV data loaded: ${enrichedData.length} rows`);
                 storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.CSV_DATA, enrichedData);
 
+                // Get client and engine from storage
                 const client = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.CLIENT);
+                const engine = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.ENGINE);
 
-                // Determine prefix
-                const prefix = client === 'Video CX' ? 'videocx' : 'incommon';
+                // Determine prefix based on both client and engine
+                let prefix;
+                if (engine === 'Advisor Finder') {
+                    prefix = client === 'Video CX' ? 'find-advisor/videocx' : 'find-advisor/incommon';
+                } else {
+                    prefix = client === 'Video CX' ? 'videocx' : 'incommon';
+                }
 
                 // Navigate to processing page
                 navigate(`/${prefix}/processing`);
@@ -180,7 +187,7 @@ const FileUploadPage = () => {
         <div className="flex flex-col items-center justify-center">
             <button
                 onClick={handleBack}
-                className="self-center mb-4 text-blue-600 hover:underline"
+                className="self-start mb-4 text-blue-600 hover:underline"
             >
                 Back to previous screen
             </button>
@@ -228,10 +235,8 @@ const FileUploadPage = () => {
                     <ul className="list-disc pl-5 mt-2 space-y-1">
                         <li>Title Relevance Analysis</li>
                         <li>Apollo Lead Enrichment</li>
-                        <li>Domain and Sitemap Scrape</li>
-                        <li>Company Relevance Scoring</li>
-                        <li>Fetch Indian Leads</li>
-                        <li>Scrape Open Jobs</li>
+                        <li>Employment History Analysis</li>
+                        <li>Connection Time Calculation</li>
                     </ul>
                     <p className="mt-2">You'll be able to monitor the progress of each step and download the final enriched CSV when complete.</p>
                 </div>

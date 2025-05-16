@@ -18,7 +18,15 @@ const STORAGE_KEYS = {
   VIDEOCX_ANALYTICS: 'trajectory_videocx_analytics',
   VIDEOCX_FILTER_ANALYTICS: 'trajectory_videocx_filterAnalytics',
   VIDEOCX_PROCESS_STATUS: 'trajectory_videocx_processStatus',
-  VIDEOCX_CURRENT_STEP: 'trajectory_videocx_currentStep'
+  VIDEOCX_CURRENT_STEP: 'trajectory_videocx_currentStep',
+
+  // Find-Advisor Video-CX Specific Keys
+  FIND_ADVISOR_PROCESSED: 'trajectory_find_advisor_processed',
+  FIND_ADVISOR_LOGS: 'trajectory_find_advisor_logs',
+  FIND_ADVISOR_ANALYTICS: 'trajectory_find_advisor_analytics',
+  FIND_ADVISOR_FILTER_ANALYTICS: 'trajectory_find_advisor_filterAnalytics',
+  FIND_ADVISOR_PROCESS_STATUS: 'trajectory_find_advisor_processStatus',
+  FIND_ADVISOR_CURRENT_STEP: 'trajectory_find_advisor_currentStep'
 };
 
 // Save data to session storage with key

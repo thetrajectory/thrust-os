@@ -1,6 +1,7 @@
-// App.jsx (with client-based route structure)
+// App.jsx - Fixed version with proper Navigate component
+
 import React, { useEffect, useState } from 'react';
-import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import './App.css';
 
 // Import common components
@@ -15,8 +16,13 @@ import ResultsPage from './components/ResultsPage'; // Incommon
 import VideoCXProcessingPage from './components/videocx/VideoCXProcessingPage'; // VideoCX
 import VideoCXResultsPage from './components/videocx/VideoCXResultsPage'; // VideoCX
 
+// Import find-advisor components
+import FindAdvisorProcessingPage from './components/find-advisor/videocx/FindAdvisorProcessingPage'; // New
+import FindAdvisorResultsPage from './components/find-advisor/videocx/FindAdvisorResultsPage'; // New
+
 // Import services
 import enrichmentOrchestrator from './services/enrichmentOrchestrator'; // Incommon
+import findAdvisorOrchestrator from './services/find-advisor/videocx/findAdvisorOrchestrator'; // New
 import videoCXOrchestrator from './services/videocx/videoCXOrchestrator'; // VideoCX
 import storageUtils from './utils/storageUtils';
 
@@ -59,6 +65,10 @@ const App = () => {
         console.log("Restoring client to Incommon AI from URL path");
         setSelectedClient('Incommon AI');
         storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.CLIENT, 'Incommon AI');
+      } else if (location.pathname.includes('/find-advisor/')) {
+        console.log("Restoring client to Advisor Finder from URL path");
+        setSelectedClient('Video CX'); // For Advisor Finder, we're still using Video CX as the client
+        storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.CLIENT, 'Video CX');
       }
     }
   }, [location.pathname, selectedClient]);
@@ -67,8 +77,14 @@ const App = () => {
   const getClientPathPrefix = (client = null) => {
     // Use passed client parameter or the state value
     const clientName = client || selectedClient;
+    const engineName = selectedEngine;
 
-    console.log("Getting path prefix for client:", clientName); // Debug log
+    console.log("Getting path prefix for client:", clientName, "and engine:", engineName);
+
+    // For the Advisor Finder engine, return a different path prefix
+    if (engineName === 'Advisor Finder') {
+      return 'find-advisor';
+    }
 
     // Convert client name to lowercase and remove spaces for URL
     if (clientName === 'Incommon AI') return 'incommon';
@@ -77,6 +93,7 @@ const App = () => {
     // Check if we're on a videocx path but don't have client info
     if (location.pathname.includes('/videocx/')) return 'videocx';
     if (location.pathname.includes('/incommon/')) return 'incommon';
+    if (location.pathname.includes('/find-advisor/')) return 'find-advisor';
 
     return 'default'; // Fallback
   };
@@ -92,7 +109,13 @@ const App = () => {
     console.log("Selected client:", client);
     setSelectedClient(client);
     storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.CLIENT, client);
-    navigate('/advisor');
+
+    // For Advisor Finder, skip the advisor selection step
+    if (selectedEngine === 'Advisor Finder') {
+      navigate('/upload');
+    } else {
+      navigate('/advisor');
+    }
   };
 
   const handleAdvisorSelection = (advisor) => {
@@ -125,8 +148,15 @@ const App = () => {
     const client = clientType || selectedClient;
     console.log("Processing complete for client:", client); // Debug log
 
-    // Get the right orchestrator based on client
-    const orchestrator = client === 'Video CX' ? videoCXOrchestrator : enrichmentOrchestrator;
+    // Get the right orchestrator based on client and engine
+    let orchestrator;
+    if (selectedEngine === 'Advisor Finder') {
+      orchestrator = findAdvisorOrchestrator;
+    } else if (client === 'Video CX') {
+      orchestrator = videoCXOrchestrator;
+    } else {
+      orchestrator = enrichmentOrchestrator;
+    }
 
     // Make sure we have data
     const orchestratorData = orchestrator.processedData || csvData || [];
@@ -160,7 +190,12 @@ const App = () => {
       navigate('/client');
       return;
     } else if (path === '/upload') {
-      navigate('/advisor');
+      // If we came from Advisor Finder, go back to client selection
+      if (selectedEngine === 'Advisor Finder') {
+        navigate('/client');
+      } else {
+        navigate('/advisor');
+      }
       return;
     }
 
@@ -200,8 +235,10 @@ const App = () => {
     setAnalytics({});
     setFilterAnalytics({});
 
-    // Reset both orchestrators to be safe
-    if (selectedClient === 'Video CX') {
+    // Reset all orchestrators to be safe
+    if (selectedEngine === 'Advisor Finder') {
+      findAdvisorOrchestrator.reset();
+    } else if (selectedClient === 'Video CX') {
       videoCXOrchestrator.reset();
     } else {
       enrichmentOrchestrator.reset();
@@ -217,7 +254,9 @@ const App = () => {
     setFilterAnalytics({});
 
     // Reset the appropriate orchestrator
-    if (selectedClient === 'Video CX') {
+    if (selectedEngine === 'Advisor Finder') {
+      findAdvisorOrchestrator.reset();
+    } else if (selectedClient === 'Video CX') {
       videoCXOrchestrator.reset();
     } else {
       enrichmentOrchestrator.reset();
@@ -285,8 +324,24 @@ const App = () => {
           />
         } />
 
-        {/* Redirect all other routes to home */}
-        <Route path="*" element={<navigate to="/" replace />} />
+        {/* FindAdvisor specific routes */}
+        <Route path="/find-advisor/videocx/processing" element={
+          <FindAdvisorProcessingPage
+            csvData={csvData}
+            onProcessingComplete={(data) => handleProcessingComplete(data, 'Find Advisor')}
+            onBack={handleBackNavigation}
+          />
+        } />
+        <Route path="/find-advisor/videocx/results" element={
+          <FindAdvisorResultsPage
+            processedData={processedData}
+            originalCount={csvData?.length || 0}
+            analytics={analytics}
+            finalCount={processedData ? processedData.filter(row => !row.relevanceTag).length : 0}
+            filterAnalytics={filterAnalytics}
+            onBack={handleBackNavigation}
+          />
+        } />
       </Routes>
     </div>
   );
