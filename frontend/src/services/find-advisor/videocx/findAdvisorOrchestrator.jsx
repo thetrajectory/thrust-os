@@ -515,6 +515,22 @@ class FindAdvisorOrchestrator {
                 progressCallback
             );
 
+            // Store more detailed analytics with timestamps
+            if (result && result.analytics) {
+                this.analytics[stepId] = {
+                    ...result.analytics,
+                    // Ensure we have startTime and endTime for reporting
+                    startTime: result.analytics.startTime || Date.now() - (result.analytics.processingTimeSeconds * 1000 || 0),
+                    endTime: result.analytics.endTime || Date.now()
+                };
+            }
+
+            // Save analytics to storage after each step - use the correct storage key
+            storageUtils.saveToStorage(
+                storageUtils.STORAGE_KEYS.FIND_ADVISOR_ANALYTICS,
+                this.analytics
+            );
+
             // Update processed data with result
             // First, create a map of the processed data by some unique identifier
             const processedMap = new Map();
@@ -585,70 +601,70 @@ class FindAdvisorOrchestrator {
         let untaggedCount = 0;
         let taggedCount = 0;
         let filterReason = {};
-      
+
         this.addLog(`Applying tag-based filtering for step: ${stepId}...`);
-      
+
         switch (stepId) {
-          case 'titleRelevance':
-            // Add tags for irrelevant titles only, let Founder and Relevant pass through
-            this.processedData = this.processedData.map(row => {
-              // Skip if already tagged
-              if (row.relevanceTag) {
-                return row;
-              }
-      
-              if (row.titleRelevance === 'Founder' || row.titleRelevance === 'Relevant' || row.titleRelevance === 'founder' || row.titleRelevance === 'relevant') {
-                untaggedCount++;
-                return row; // No tag for Founder or Relevant
-              } else {
-                // Apply tag for Irrelevant titles
-                taggedCount++;
-                filterReason[row.titleRelevance || 'Unknown'] =
-                  (filterReason[row.titleRelevance || 'Unknown'] || 0) + 1;
-      
-                return {
-                  ...row,
-                  relevanceTag: `Irrelevant Title: ${row.titleRelevance || 'Unknown'}`
-                };
-              }
-            });
-      
-            this.addLog(`Title relevance filtering: ${untaggedCount} rows untagged (Founder/Relevant), ${taggedCount} tagged with "Irrelevant".`);
-            break;
-      
-          case 'employmentHistoryAnalysis':
-            // For employment history, we don't apply any filtering
-            // Just count the untagged and tagged rows
-            untaggedCount = this.processedData.filter(row => !row.relevanceTag).length;
-            taggedCount = this.processedData.filter(row => row.relevanceTag).length;
-            this.addLog(`Employment history analysis complete: ${untaggedCount} rows remain untagged, ${taggedCount} were previously tagged.`);
-            break;
-      
-          default:
-            // For other steps, don't apply tags
-            untaggedCount = this.processedData.filter(row => !row.relevanceTag).length;
-            taggedCount = this.processedData.filter(row => row.relevanceTag).length;
-            this.addLog(`No tag filtering applied for step: ${stepId}`);
+            case 'titleRelevance':
+                // Add tags for irrelevant titles only, let Founder and Relevant pass through
+                this.processedData = this.processedData.map(row => {
+                    // Skip if already tagged
+                    if (row.relevanceTag) {
+                        return row;
+                    }
+
+                    if (row.titleRelevance === 'Founder' || row.titleRelevance === 'Relevant' || row.titleRelevance === 'founder' || row.titleRelevance === 'relevant') {
+                        untaggedCount++;
+                        return row; // No tag for Founder or Relevant
+                    } else {
+                        // Apply tag for Irrelevant titles
+                        taggedCount++;
+                        filterReason[row.titleRelevance || 'Unknown'] =
+                            (filterReason[row.titleRelevance || 'Unknown'] || 0) + 1;
+
+                        return {
+                            ...row,
+                            relevanceTag: `Irrelevant Title: ${row.titleRelevance || 'Unknown'}`
+                        };
+                    }
+                });
+
+                this.addLog(`Title relevance filtering: ${untaggedCount} rows untagged (Founder/Relevant), ${taggedCount} tagged with "Irrelevant".`);
+                break;
+
+            case 'employmentHistoryAnalysis':
+                // For employment history, we don't apply any filtering
+                // Just count the untagged and tagged rows
+                untaggedCount = this.processedData.filter(row => !row.relevanceTag).length;
+                taggedCount = this.processedData.filter(row => row.relevanceTag).length;
+                this.addLog(`Employment history analysis complete: ${untaggedCount} rows remain untagged, ${taggedCount} were previously tagged.`);
+                break;
+
+            default:
+                // For other steps, don't apply tags
+                untaggedCount = this.processedData.filter(row => !row.relevanceTag).length;
+                taggedCount = this.processedData.filter(row => row.relevanceTag).length;
+                this.addLog(`No tag filtering applied for step: ${stepId}`);
         }
-      
+
         // Update analytics with filtering info
         if (this.analytics[stepId]) {
-          this.analytics[stepId].filtering = {
-            originalCount,
-            untaggedCount,
-            taggedCount,
-            filterReason
-          };
-      
-          // Update status
-          this.stepStatus[stepId].analytics = this.analytics[stepId];
-      
-          // Notify status change
-          if (this.statusCallback) {
-            this.statusCallback(this.stepStatus);
-          }
+            this.analytics[stepId].filtering = {
+                originalCount,
+                untaggedCount,
+                taggedCount,
+                filterReason
+            };
+
+            // Update status
+            this.stepStatus[stepId].analytics = this.analytics[stepId];
+
+            // Notify status change
+            if (this.statusCallback) {
+                this.statusCallback(this.stepStatus);
+            }
         }
-      }
+    }
 
     /**
      * Get the final filtered data (fully processed)

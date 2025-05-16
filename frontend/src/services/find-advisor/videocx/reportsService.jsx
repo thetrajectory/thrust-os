@@ -173,14 +173,20 @@ class AdvisorFinderReportsService {
     const now = new Date().toISOString();
     const dateFormatted = now.slice(0, 10);
     const timeFormatted = now.slice(11, 19);
+
+    // Safely access data with fallbacks
     const totalRows = enrichmentState.processedData?.length || 0;
+    const originalRows = enrichmentState.originalCount || totalRows ||
+      enrichmentState.csvData?.length || 100; // Fallback to reasonable default
+
+    console.log(`Total rows: ${totalRows}, Original rows: ${originalRows}`);
 
     // Define the advisor finder pipeline steps
     const pipeline = [
       'titleRelevance',
       'apolloEnrichment',
       'employmentHistoryAnalysis',
-      'connectionTime'
+      'connectionTimeAnalysis'
     ];
 
     // Get step name mappings for display
@@ -188,7 +194,7 @@ class AdvisorFinderReportsService {
       'titleRelevance': 'Title Relevance Analysis',
       'apolloEnrichment': 'Apollo Lead Enrichment',
       'employmentHistoryAnalysis': 'Employment History Analysis',
-      'connectionTime': 'Connection Time Analysis'
+      'connectionTimeAnalysis': 'Connection Time Analysis'
     };
 
     // Map API sources
@@ -196,23 +202,54 @@ class AdvisorFinderReportsService {
       'titleRelevance': 'GPT',
       'apolloEnrichment': 'Apollo',
       'employmentHistoryAnalysis': 'GPT',
-      'connectionTime': 'Internal'
+      'connectionTimeAnalysis': 'Internal'
     };
 
     // Process each step in the pipeline
     pipeline.forEach(stepId => {
-      // Get analytics for this step
+      // Get analytics for this step with fallbacks to prevent errors
       const analytics = enrichmentState.analytics?.[stepId] || {};
 
-      // Calculate time to run
+      console.log(`Processing analytics for step ${stepId}:`, analytics);
+
+      // Calculate time to run with multiple fallbacks
       let timeToRun = 0;
-      if (analytics.processingTimeSeconds !== undefined) {
+      if (typeof analytics.processingTimeSeconds === 'number') {
         timeToRun = analytics.processingTimeSeconds;
       } else if (analytics.startTime && analytics.endTime) {
         timeToRun = (analytics.endTime - analytics.startTime) / 1000;
+      } else if (analytics.startTimestamp && analytics.endTimestamp) {
+        // Alternative key names
+        timeToRun = (analytics.endTimestamp - analytics.startTimestamp) / 1000;
       }
 
-      // Get the step-specific metrics
+      console.log(`Time to run for ${stepId}: ${timeToRun.toFixed(2)} seconds`);
+
+      // Get tokens or credits used
+      let tokensOrCredits = 0;
+      if (stepId === 'titleRelevance' || stepId === 'employmentHistoryAnalysis') {
+        tokensOrCredits = analytics.tokensUsed || 0;
+      } else if (stepId === 'apolloEnrichment') {
+        tokensOrCredits = analytics.apolloFetches || analytics.creditsUsed || 0;
+      }
+
+      console.log(`Tokens/Credits for ${stepId}: ${tokensOrCredits}`);
+
+      // Calculate processed rows - try multiple approaches
+      let processedRowsForStep = 0;
+
+      if (typeof analytics.totalProcessed === 'number') {
+        processedRowsForStep = analytics.totalProcessed;
+      } else if (typeof analytics.processedCount === 'number') {
+        processedRowsForStep = analytics.processedCount;
+      } else {
+        // If no specific count, use total rows as default
+        processedRowsForStep = originalRows;
+      }
+
+      console.log(`Processed rows for ${stepId}: ${processedRowsForStep}`);
+
+      // Get step-specific metrics with safe access
       let specificMetrics = "";
 
       if (stepId === 'titleRelevance') {
@@ -220,9 +257,12 @@ class AdvisorFinderReportsService {
       } else if (stepId === 'apolloEnrichment') {
         specificMetrics = `From Supabase: ${analytics.supabaseHits || 0}, From Apollo: ${analytics.apolloFetches || 0}`;
       } else if (stepId === 'employmentHistoryAnalysis') {
-        specificMetrics = `High Potential: ${analytics.highPotentialCount || 0}, Medium: ${analytics.mediumPotentialCount || 0}, Low: ${analytics.lowPotentialCount || 0}`;
-      } else if (stepId === 'connectionTime') {
-        specificMetrics = `Long-Term: ${analytics.longTermConnections || 0}, Medium-Term: ${analytics.mediumTermConnections || 0}, Recent: ${analytics.recentConnections || 0}`;
+        const rowsWithResponse = analytics.rowsWithResponses ||
+          (enrichmentState.processedData?.filter(row => row.advisorAnalysisResponse)?.length || 0);
+
+        specificMetrics = `Processed: ${analytics.processedCount || 0}, Rows with response: ${rowsWithResponse}`;
+      } else if (stepId === 'connectionTimeAnalysis') {
+        specificMetrics = `Connections analyzed: ${processedRowsForStep || 0}`;
       }
 
       // Create row for the report
@@ -231,17 +271,67 @@ class AdvisorFinderReportsService {
         'Time': timeFormatted,
         'Engine': 'Advisor Finder',
         'Step': stepNameMap[stepId] || stepId,
-        'Total Rows': analytics.totalProcessed || totalRows,
+        'Total Rows': processedRowsForStep || 0,
+        'Total Tokens/Credits': tokensOrCredits || 0,
         'Time to Run (seconds)': timeToRun.toFixed(2),
+        'Average Token/Row': processedRowsForStep > 0 ? (tokensOrCredits / processedRowsForStep).toFixed(2) : 0,
+        'Average Time/Row (seconds)': processedRowsForStep > 0 && timeToRun > 0 ? (timeToRun / processedRowsForStep).toFixed(4) : 0,
         'API/Tool': apiSourceMap[stepId] || 'Unknown',
-        'Specific Metrics': specificMetrics,
+        'Supabase Hits': analytics.supabaseHits || 0,
         'Errors': analytics.errorCount || 0,
-        'Tokens Used': analytics.tokensUsed || 0
+        'Specific Metrics': specificMetrics
       };
 
       // Add the row to our report
       reportRows.push(reportRow);
     });
+
+    // Add a final summary row with totals
+    const totalTime = pipeline.reduce((sum, stepId) => {
+      const analytics = enrichmentState.analytics?.[stepId] || {};
+      if (typeof analytics.processingTimeSeconds === 'number') {
+        return sum + analytics.processingTimeSeconds;
+      } else if (analytics.startTime && analytics.endTime) {
+        return sum + ((analytics.endTime - analytics.startTime) / 1000);
+      }
+      return sum;
+    }, 0);
+
+    const totalTokens = pipeline.reduce((sum, stepId) => {
+      const analytics = enrichmentState.analytics?.[stepId] || {};
+      if (stepId === 'titleRelevance' || stepId === 'employmentHistoryAnalysis') {
+        return sum + (analytics.tokensUsed || 0);
+      } else if (stepId === 'apolloEnrichment') {
+        return sum + (analytics.apolloFetches || analytics.creditsUsed || 0);
+      }
+      return sum;
+    }, 0);
+
+    // Calculate qualified leads count
+    let qualifiedLeadsCount = 0;
+    if (enrichmentState.finalCount) {
+      qualifiedLeadsCount = enrichmentState.finalCount;
+    } else if (enrichmentState.processedData) {
+      qualifiedLeadsCount = enrichmentState.processedData.filter(row => !row.relevanceTag).length;
+    }
+
+    const summaryRow = {
+      'Date': dateFormatted,
+      'Time': timeFormatted,
+      'Engine': 'Advisor Finder',
+      'Step': 'TOTAL',
+      'Total Rows': originalRows,
+      'Total Tokens/Credits': totalTokens,
+      'Time to Run (seconds)': totalTime.toFixed(2),
+      'Average Token/Row': originalRows > 0 ? (totalTokens / originalRows).toFixed(2) : 0,
+      'Average Time/Row (seconds)': originalRows > 0 && totalTime > 0 ? (totalTime / originalRows).toFixed(4) : 0,
+      'API/Tool': 'All',
+      'Supabase Hits': '-',
+      'Errors': '-',
+      'Specific Metrics': `Final Qualified Leads: ${qualifiedLeadsCount}`
+    };
+
+    reportRows.push(summaryRow);
 
     return reportRows;
   }
