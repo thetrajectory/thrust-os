@@ -175,7 +175,7 @@ const ResultsPage = (props) => {
 
     if (dataToDownload && dataToDownload.length > 0) {
       // Use fileStorageService directly instead of reportsService
-      const result = fileStorageService.downloadProcessedDataCsv(dataToDownload);
+      const result = fileStorageService.downloadProcessedDataCsv(dataToDownload, 'incommon_processed_data.csv');
       if (!result.success) {
         alert(`Error downloading data: ${result.error}`);
       }
@@ -223,7 +223,7 @@ const ResultsPage = (props) => {
     console.log("Enrichment state for report:", enrichmentState);
 
     try {
-      const result = reportsService.downloadReportsCsv(enrichmentState);
+      const result = reportsService.downloadReportsCsv(enrichmentState, 'incommon_analytics_report.csv');
       if (!result.success) {
         alert(`Error downloading report: ${result.error}`);
       } else {

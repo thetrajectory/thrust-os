@@ -33,7 +33,7 @@ class FileStorageService {
       const csv = Papa.unparse(flattenedData);
 
       // Set default filename if not provided
-      const defaultFilename = `advisor_finder_data_${new Date().toISOString().slice(0, 10)}.csv`;
+      const defaultFilename = `enriched_data_${new Date().toISOString().slice(0, 10)}.csv`;
       const finalFilename = filename || defaultFilename;
 
       // Create and download file
