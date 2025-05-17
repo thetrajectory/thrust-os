@@ -313,108 +313,141 @@ export async function processEmploymentHistoryAnalysis(data, logCallback, progre
   let errorCount = 0;
   let tokensUsed = 0;
 
-  // Process in batches (one at a time for reliability)
-  for (let i = 0; i < untaggedData.length; i += 1) { // Process one row at a time
-    const row = untaggedData[i];
+  // Process in batches
+  for (let i = 0; i < untaggedData.length; i += batchSize) {
+    const currentBatchSize = Math.min(batchSize, untaggedData.length - i);
+    logCallback(`Processing batch ${Math.floor(i / batchSize) + 1}: items ${i + 1} to ${i + currentBatchSize}`);
 
-    // Find original index
-    const key = getUniqueKey(row);
-    const originalIndex = key ? originalIndexMap.get(key) : -1;
+    // Process each batch in parallel
+    const batchPromises = [];
 
-    if (originalIndex === undefined || originalIndex === -1) {
-      logCallback(`Warning: Could not find original index for item ${i + 1}. Using fallback approach.`);
-      // Try a fallback approach
-      const fallbackIndex = data.findIndex(item =>
-        (item.id && item.id === row.id) ||
-        (item.linkedin_url && item.linkedin_url === row.linkedin_url) ||
-        (item.first_name && item.last_name &&
-          item.first_name === row.first_name &&
-          item.last_name === row.last_name)
-      );
+    for (let j = 0; j < currentBatchSize; j++) {
+      const index = i + j;
+      const row = untaggedData[index];
 
-      if (fallbackIndex === -1) {
-        logCallback(`Error: Could not map item ${i + 1} to original data. Skipping.`);
-        errorCount++;
-        progressCallback((i + 1) / untaggedData.length * 100);
-        continue;
-      }
-      logCallback(`Found fallback index ${fallbackIndex} for item ${i + 1}.`);
-    }
+      // Find original index
+      const key = getUniqueKey(row);
+      const originalIndex = key ? originalIndexMap.get(key) : -1;
 
-    const targetIndex = originalIndex !== -1 ? originalIndex : i;
-    logCallback(`Processing item ${i + 1}, mapped to index ${targetIndex} in original data.`);
-
-    // Skip processing if row is already tagged
-    if (row.relevanceTag) {
-      logCallback(`Skipping item ${i + 1}: Already tagged as "${row.relevanceTag}"`);
-      skippedCount++;
-      progressCallback((i + 1) / untaggedData.length * 100);
-      continue;
-    }
-
-    // Extract employment history from the row
-    const employmentHistory = row.employment_history_summary || '';
-
-    if (!employmentHistory.trim()) {
-      logCallback(`Item ${i + 1}: No employment history available, but still processing`);
-    }
-
-    try {
-      // Process this item
-      const result = await analyzeEmploymentHistory(row, employmentHistory, i, apiKey, model, logCallback);
-
-      if (!result) {
-        logCallback(`Error: Got undefined result for item ${i + 1}`);
-        errorCount++;
-        progressCallback((i + 1) / untaggedData.length * 100);
-        continue;
+      if (originalIndex === undefined || originalIndex === -1) {
+        logCallback(`Warning: Could not find original index for item ${index + 1}. Using fallback approach.`);
+        // Skip the error logging for now, we'll handle it in the Promise
       }
 
-      // Get the response text
-      const responseText = result.response || '';
+      // Create a promise for processing this item
+      const processPromise = (async () => {
+        try {
+          // Get the actual index to update in the original data
+          let targetIndex = originalIndex;
+          
+          // If we couldn't find the index using the key, try a fallback approach
+          if (targetIndex === undefined || targetIndex === -1) {
+            targetIndex = data.findIndex(item =>
+              (item.id && item.id === row.id) ||
+              (item.linkedin_url && item.linkedin_url === row.linkedin_url) ||
+              (item.first_name && item.last_name &&
+                item.first_name === row.first_name &&
+                item.last_name === row.last_name)
+            );
+            
+            if (targetIndex === -1) {
+              logCallback(`Error: Could not map item ${index + 1} to original data. Skipping.`);
+              throw new Error("Could not find matching index in original data");
+            }
+            logCallback(`Found fallback index ${targetIndex} for item ${index + 1}.`);
+          }
 
-      // Store the raw API response in the original data array
-      if (targetIndex >= 0 && targetIndex < processedData.length) {
-        processedData[targetIndex] = {
-          ...processedData[targetIndex],
-          advisorAnalysisResponse: responseText,
-          advisorAnalysisPrompt: result.prompt || ''
-        };
-        logCallback(`Successfully stored analysis response for item ${i + 1} at index ${targetIndex}`);
+          // Skip processing if row is already tagged
+          if (row.relevanceTag) {
+            logCallback(`Skipping item ${index + 1}: Already tagged as "${row.relevanceTag}"`);
+            skippedCount++;
+            return { targetIndex, skipped: true };
+          }
+
+          // Extract employment history from the row
+          const employmentHistory = row.employment_history_summary || '';
+
+          if (!employmentHistory.trim()) {
+            logCallback(`Item ${index + 1}: No employment history available, but still processing`);
+          }
+
+          // Process this item
+          const result = await analyzeEmploymentHistory(row, employmentHistory, index, apiKey, model, logCallback);
+
+          if (!result) {
+            logCallback(`Error: Got undefined result for item ${index + 1}`);
+            throw new Error("Undefined result from analysis");
+          }
+
+          // Get the response text
+          const responseText = result.response || '';
+
+          return {
+            targetIndex,
+            skipped: false,
+            result,
+            responseText
+          };
+        } catch (error) {
+          logCallback(`Error processing item ${index + 1}: ${error.message}`);
+          // Return the error to handle it in the main Promise.all handler
+          return {
+            targetIndex: originalIndex !== -1 ? originalIndex : index,
+            error: error.message
+          };
+        }
+      })();
+
+      batchPromises.push(processPromise);
+    }
+
+    // Wait for all promises in this batch to complete
+    const batchResults = await Promise.all(batchPromises);
+
+    // Process the results of this batch
+    for (const result of batchResults) {
+      if (result.skipped) {
+        // Already counted skipped in the promise
+        continue;
+      } else if (result.error) {
+        errorCount++;
+        
+        // Add error info to the processed data
+        if (result.targetIndex >= 0 && result.targetIndex < processedData.length) {
+          processedData[result.targetIndex] = {
+            ...processedData[result.targetIndex],
+            advisorAnalysisError: result.error
+          };
+        }
       } else {
-        logCallback(`Warning: Invalid target index ${targetIndex} for data array of length ${processedData.length}`);
-        errorCount++;
-      }
-
-      // Update analytics
-      processedCount++;
-      if (result.tokens) {
-        tokensUsed += result.tokens;
-      }
-
-      // Log individual item completion
-      logCallback(`Processed item ${i + 1} successfully`);
-
-      // Add a small delay between API calls to avoid rate limiting
-      if (i < untaggedData.length - 1) {
-        logCallback(`Waiting before processing next item...`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-    } catch (error) {
-      logCallback(`Error processing item ${i + 1}: ${error.message}`);
-      errorCount++;
-
-      // Add error info to the processed data if index is valid
-      if (targetIndex >= 0 && targetIndex < processedData.length) {
-        processedData[targetIndex] = {
-          ...processedData[targetIndex],
-          advisorAnalysisError: error.message
-        };
+        // Successfully processed
+        processedCount++;
+        
+        // Store the raw API response in the original data array
+        if (result.targetIndex >= 0 && result.targetIndex < processedData.length) {
+          processedData[result.targetIndex] = {
+            ...processedData[result.targetIndex],
+            advisorAnalysisResponse: result.responseText,
+            advisorAnalysisPrompt: result.result.prompt || ''
+          };
+          logCallback(`Successfully stored analysis response at index ${result.targetIndex}`);
+        }
+        
+        // Update token usage
+        if (result.result.tokens) {
+          tokensUsed += result.result.tokens;
+        }
       }
     }
 
-    // Update progress after each item
-    progressCallback((i + 1) / untaggedData.length * 100);
+    // Update progress after each batch
+    progressCallback(Math.min(100, ((i + currentBatchSize) / untaggedData.length) * 100));
+
+    // Add a small delay between batches to avoid rate limiting
+    if (i + currentBatchSize < untaggedData.length) {
+      logCallback("Pausing briefly between batches to avoid rate limits...");
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
   }
 
   const endTimestamp = Date.now();
