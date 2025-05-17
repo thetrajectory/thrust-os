@@ -5,6 +5,7 @@ import { Pie } from 'react-chartjs-2';
 import { useNavigate } from 'react-router-dom';
 import reportsService from '../services/reportsService';
 import storageUtils from '../utils/storageUtils';
+import fileStorageService from '../services/fileStorageService';
 
 // Register Chart.js components
 ChartJS.register(ArcElement, Tooltip, Legend);
@@ -31,19 +32,31 @@ const ResultsPage = (props) => {
   // Load data from session storage on component mount
   useEffect(() => {
     // Load all required data from session storage
-    const storedProcessedData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.PROCESSED);
+    // const storedProcessedData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.PROCESSED);
     const storedFilteredData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.FILTERED);
     const storedAnalytics = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.ANALYTICS);
     const storedFilterAnalytics = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.FILTER_ANALYTICS);
     const storedCsvData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.CSV_DATA);
 
+    const storedProcessedData = fileStorageService.getProcessedData();
+
+    if (storedProcessedData && storedProcessedData.length > 0) {
+      setProcessedData(storedProcessedData);
+    } else {
+      // Fallback to session storage for backward compatibility
+      const sessionStorageData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.PROCESSED);
+      if (sessionStorageData && sessionStorageData.length > 0) {
+        setProcessedData(sessionStorageData);
+      }
+    }
+
     console.log("Loaded analytics:", storedAnalytics);
     console.log("Loaded filter analytics:", storedFilterAnalytics);
 
     // Set state from storage
-    if (storedProcessedData && storedProcessedData.length > 0) {
-      setProcessedData(storedProcessedData);
-    }
+    // if (storedProcessedData && storedProcessedData.length > 0) {
+    //   setProcessedData(storedProcessedData);
+    // }
 
     if (storedCsvData && storedCsvData.length > 0) {
       setOriginalCount(storedCsvData.length);
@@ -141,12 +154,17 @@ const ResultsPage = (props) => {
 
   const handleDownloadData = () => {
     // Use all processed data for download
-    let dataToDownload = processedData;
+    let dataToDownload = fileStorageService.getProcessedData();
 
     // If not available, try loading directly from storage
     if (!dataToDownload || dataToDownload.length === 0) {
-      dataToDownload = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.PROCESSED);
+      dataToDownload = processedData;
       console.log("Loaded from PROCESSED storage:", dataToDownload);
+    }
+
+    if (!dataToDownload || dataToDownload.length === 0) {
+      // Last resort: try loading from session storage
+      dataToDownload = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.PROCESSED);
     }
 
     // If still not available, try original CSV data
@@ -156,7 +174,8 @@ const ResultsPage = (props) => {
     }
 
     if (dataToDownload && dataToDownload.length > 0) {
-      const result = reportsService.downloadProcessedDataCsv(dataToDownload);
+      // Use fileStorageService directly instead of reportsService
+      const result = fileStorageService.downloadProcessedDataCsv(dataToDownload);
       if (!result.success) {
         alert(`Error downloading data: ${result.error}`);
       }

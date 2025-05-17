@@ -4,6 +4,7 @@ import storageUtils from '../../utils/storageUtils';
 import annualReportTextExtractionService from './annualReportTextExtractionService';
 import apolloEnrichmentService from './apolloEnrichmentService';
 import fetchAnnualReportService from './fetchAnnualReportService';
+import fileStorageService from './fileStorageService';
 import headcountFilterService from './headcountFilterService';
 import industryRelevanceService from './industryRelevanceService';
 import insightExtractionService from './insightExtractionService';
@@ -368,6 +369,10 @@ class VideoCXOrchestrator {
                         storageUtils.STORAGE_KEYS.VIDEOCX_FILTER_ANALYTICS,
                         this.filterAnalytics
                     );
+                }
+
+                if (this.processedData) {
+                    fileStorageService.storeProcessedData(this.processedData);
                 }
 
                 // Move to the next step without trying to process
@@ -759,6 +764,8 @@ class VideoCXOrchestrator {
         while (continueProcessing && !this.processingComplete && !this.error) {
             continueProcessing = await this.processCurrentStep();
         }
+
+        fileStorageService.storeProcessedData(this.processedData);
 
         return {
             completed: this.processingComplete,

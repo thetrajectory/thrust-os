@@ -5,6 +5,7 @@ import { Pie } from 'react-chartjs-2';
 import { useNavigate } from 'react-router-dom';
 import reportsService from '../../services/videocx/reportsService';
 import storageUtils from '../../utils/storageUtils';
+import fileStorageService from '../../services/videocx/fileStorageService';
 
 // Register Chart.js components
 ChartJS.register(ArcElement, Tooltip, Legend);
@@ -48,18 +49,30 @@ const VideoCXResultsPage = (props) => {
   // Load data from session storage on component mount
   useEffect(() => {
     // Load all required data from session storage
-    const storedProcessedData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.VIDEOCX_PROCESSED);
+    // const storedProcessedData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.VIDEOCX_PROCESSED);
     const storedAnalytics = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.VIDEOCX_ANALYTICS);
     const storedFilterAnalytics = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.VIDEOCX_FILTER_ANALYTICS);
     const storedCsvData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.CSV_DATA);
+
+    const storedProcessedData = fileStorageService.getProcessedData();
+
+    if (storedProcessedData && storedProcessedData.length > 0) {
+      setProcessedData(storedProcessedData);
+    } else {
+      // Fallback to session storage
+      const sessionStorageData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.VIDEOCX_PROCESSED);
+      if (sessionStorageData && sessionStorageData.length > 0) {
+        setProcessedData(sessionStorageData);
+      }
+    }
 
     console.log("Loaded VideoCX analytics:", storedAnalytics);
     console.log("Loaded VideoCX filter analytics:", storedFilterAnalytics);
 
     // Set state from storage
-    if (storedProcessedData && storedProcessedData.length > 0) {
-      setProcessedData(storedProcessedData);
-    }
+    // if (storedProcessedData && storedProcessedData.length > 0) {
+    //   setProcessedData(storedProcessedData);
+    // }
 
     if (storedCsvData && storedCsvData.length > 0) {
       setOriginalCount(storedCsvData.length);
@@ -235,18 +248,18 @@ const VideoCXResultsPage = (props) => {
 
   // Handle download functions
   const handleDownloadData = () => {
-    let dataToDownload = processedData;
+    let dataToDownload = fileStorageService.getProcessedData();
+
+    if (!dataToDownload || dataToDownload.length === 0) {
+      dataToDownload = processedData;
+    }
 
     if (!dataToDownload || dataToDownload.length === 0) {
       dataToDownload = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.VIDEOCX_PROCESSED);
     }
 
-    if (!dataToDownload || dataToDownload.length === 0) {
-      dataToDownload = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.CSV_DATA);
-    }
-
     if (dataToDownload && dataToDownload.length > 0) {
-      const result = reportsService.downloadProcessedDataCsv(dataToDownload, 'videocx_processed_data.csv');
+      const result = fileStorageService.downloadProcessedDataCsv(dataToDownload, 'videocx_processed_data.csv');
       if (!result.success) {
         alert(`Error downloading data: ${result.error}`);
       } else {

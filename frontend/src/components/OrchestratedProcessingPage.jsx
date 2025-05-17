@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import enrichmentOrchestrator from '../services/enrichmentOrchestrator';
 import enrichmentOrchestratorUtils from '../utils/enrichmentOrchestratorUtils';
 import storageUtils from '../utils/storageUtils';
+import fileStorageService from '../services/fileStorageService';
 
 const OrchestratedProcessingPage = () => {
   const navigate = useNavigate();
@@ -459,6 +460,9 @@ const OrchestratedProcessingPage = () => {
     }
 
     // Save the current state of data processing
+    fileStorageService.storeProcessedData(
+      enrichmentOrchestrator.processedData || csvData
+    );
     storageUtils.saveToStorage(
       storageUtils.STORAGE_KEYS.PROCESSED,
       enrichmentOrchestrator.processedData || csvData
@@ -477,8 +481,19 @@ const OrchestratedProcessingPage = () => {
     // Get the FULL processed data regardless of completion state
     const allData = enrichmentOrchestrator.processedData || csvData;
 
-    // Save processed data
-    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.PROCESSED, allData);
+    // Store in fileStorageService instead of session storage
+    fileStorageService.storeProcessedData(allData);
+
+    // Keep using session storage for analytics and logs (not processed data)
+    storageUtils.saveToStorage(
+      storageUtils.STORAGE_KEYS.ANALYTICS,
+      enrichmentOrchestrator.analytics
+    );
+
+    storageUtils.saveToStorage(
+      storageUtils.STORAGE_KEYS.FILTER_ANALYTICS,
+      enrichmentOrchestrator.filterAnalytics
+    );
 
     // Add termination analytics if cancelled
     if (isCancelling) {

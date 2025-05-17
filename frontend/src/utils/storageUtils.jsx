@@ -11,6 +11,7 @@ const STORAGE_KEYS = {
   LOGS: 'trajectory_logs',
   PROCESS_STATUS: 'trajectory_processStatus',
   CURRENT_STEP: 'trajectory_currentStep',
+  PROCESSED_COUNT: 'trajectory_processed_count',
 
   // VideoCX Specific Keys
   VIDEOCX_PROCESSED: 'trajectory_videocx_processed',
@@ -19,6 +20,7 @@ const STORAGE_KEYS = {
   VIDEOCX_FILTER_ANALYTICS: 'trajectory_videocx_filterAnalytics',
   VIDEOCX_PROCESS_STATUS: 'trajectory_videocx_processStatus',
   VIDEOCX_CURRENT_STEP: 'trajectory_videocx_currentStep',
+  VIDEOCX_PROCESSED_COUNT: 'trajectory_videocx_processed_count',
 
   // Find-Advisor Video-CX Specific Keys
   FIND_ADVISOR_PROCESSED: 'trajectory_find_advisor_processed',

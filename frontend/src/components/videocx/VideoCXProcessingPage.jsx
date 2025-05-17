@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import videoCXOrchestrator from '../../services/videocx/videoCXOrchestrator';
 import storageUtils from '../../utils/storageUtils';
+import fileStorageService from '../../services/videocx/fileStorageService';
 
 const VideoCXProcessingPage = ({ csvData, onProcessingComplete, onBack }) => {
   const navigate = useNavigate();
@@ -236,6 +237,10 @@ const VideoCXProcessingPage = ({ csvData, onProcessingComplete, onBack }) => {
     // Mark orchestrator as complete to prevent further processing
     videoCXOrchestrator.processingComplete = true;
 
+    fileStorageService.storeProcessedData(
+      videoCXOrchestrator.processedData || loadedCsvData
+    );
+
     // Mark the current step as terminated
     const currentStepId = videoCXOrchestrator.pipeline[videoCXOrchestrator.currentStepIndex];
     if (currentStepId) {
@@ -264,7 +269,7 @@ const VideoCXProcessingPage = ({ csvData, onProcessingComplete, onBack }) => {
     const allData = videoCXOrchestrator.processedData || loadedCsvData;
 
     // Save processed data
-    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.VIDEOCX_PROCESSED, allData);
+    fileStorageService.storeProcessedData(allData);
 
     // Add termination analytics if cancelled
     if (isCancelling) {

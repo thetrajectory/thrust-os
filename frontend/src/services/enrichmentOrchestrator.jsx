@@ -9,6 +9,7 @@ import indianLeadsService from './indianLeadsService';
 import openJobsService from './openJobsService';
 import otherCountryLeadsService from './otherCountryLeadsService';
 import titleRelevanceService from './titleRelevanceService';
+import fileStorageService from './fileStorageService'
 
 /**
  * Orchestrates the entire lead enrichment pipeline
@@ -513,7 +514,11 @@ class EnrichmentOrchestrator {
             );
           }
 
-          // Move to the next step without trying to process
+          if (this.processedData) {
+            fileStorageService.storeProcessedData(this.processedData);
+          }
+          
+          // Move to next step
           this.currentStepIndex++;
           this.isProcessing = false;
 
@@ -983,6 +988,8 @@ class EnrichmentOrchestrator {
     while (continueProcessing && !this.processingComplete && !this.error) {
       continueProcessing = await this.processCurrentStep();
     }
+
+    fileStorageService.storeProcessedData(this.processedData);
 
     return {
       completed: this.processingComplete,
