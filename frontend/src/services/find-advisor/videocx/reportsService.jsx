@@ -1,5 +1,6 @@
 // services/find-advisor/reportsService.jsx
 import Papa from 'papaparse';
+import fileStorageService from './fileStorageService';
 
 /**
  * Service for generating and downloading Advisor Finder reports
@@ -17,6 +18,11 @@ class AdvisorFinderReportsService {
     }
 
     try {
+      // For large datasets, delegate to the file service
+      if (processedData.length > 50) {
+        return fileStorageService.downloadProcessedDataCsv(processedData, filename);
+      }
+
       // Prepare flattened data to ensure all columns are included
       const flattenedData = processedData.map(row => {
         // Start with basic data structure

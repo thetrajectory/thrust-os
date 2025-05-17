@@ -4,6 +4,7 @@ import storageUtils from '../../../utils/storageUtils';
 import apolloEnrichmentService from './apolloEnrichmentService';
 import connectionTimeService from './connectionTimeService';
 import employmentHistoryAnalysisService from './employmentHistoryAnalysisService';
+import fileStorageService from './fileStorageService';
 import titleRelevanceService from './titleRelevanceService';
 
 /**
@@ -338,9 +339,10 @@ class FindAdvisorOrchestrator {
                 this.addLog(`Step completed in ${timeInSeconds.toFixed(2)} seconds`);
 
                 // Save analytics to storage after each step
+                fileStorageService.storeProcessedData(this.processedData);
                 storageUtils.saveToStorage(
-                    storageUtils.STORAGE_KEYS.FIND_ADVISOR_ANALYTICS,
-                    this.analytics
+                    storageUtils.STORAGE_KEYS.FIND_ADVISOR_PROCESSED_COUNT,
+                    this.processedData.length
                 );
 
                 // If we've updated filter analytics, save those too

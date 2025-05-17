@@ -1,6 +1,8 @@
 import { ArcElement, Chart as ChartJS, Legend, Tooltip } from 'chart.js';
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import fileStorageService from '../../../services/find-advisor/videocx/fileStorageService';
+import findAdvisorOrchestrator from '../../../services/find-advisor/videocx/findAdvisorOrchestrator';
 import reportsService from '../../../services/find-advisor/videocx/reportsService';
 import storageUtils from '../../../utils/storageUtils';
 
@@ -16,15 +18,20 @@ const FindAdvisorResultsPage = () => {
 
   // Load data from session storage on component mount
   useEffect(() => {
-    // Load all required data from session storage
-    const storedProcessedData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.FIND_ADVISOR_PROCESSED);
-    const storedCsvData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.CSV_DATA);
+    // Instead of loading full data from session storage:
+    const processedDataCount = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.FIND_ADVISOR_PROCESSED_COUNT) || 0;
 
-    // Set state from storage
-    if (storedProcessedData && storedProcessedData.length > 0) {
-      setProcessedData(storedProcessedData);
+    // Get the data from the orchestrator/file service
+    const processedData = findAdvisorOrchestrator.processedData || fileStorageService.getProcessedData() || [];
+    setProcessedData(processedData);
+
+    // For count-only information
+    if (processedData.length === 0 && processedDataCount > 0) {
+      setProcessedData([{ placeholder: true, count: processedDataCount }]);
     }
 
+    // Load other metadata
+    const storedCsvData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.CSV_DATA);
     if (storedCsvData && storedCsvData.length > 0) {
       setOriginalCount(storedCsvData.length);
     }
@@ -39,8 +46,8 @@ const FindAdvisorResultsPage = () => {
   const handleDownloadData = () => {
     let dataToDownload = processedData;
 
-    if (!dataToDownload || dataToDownload.length === 0) {
-      dataToDownload = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.FIND_ADVISOR_PROCESSED);
+    if (!dataToDownload || dataToDownload.length === 0 || dataToDownload[0]?.placeholder) {
+      dataToDownload = findAdvisorOrchestrator.processedData || fileStorageService.getProcessedData();
     }
 
     if (!dataToDownload || dataToDownload.length === 0) {
@@ -48,7 +55,8 @@ const FindAdvisorResultsPage = () => {
     }
 
     if (dataToDownload && dataToDownload.length > 0) {
-      const result = reportsService.downloadProcessedDataCsv(dataToDownload, 'advisor_finder_data.csv');
+      // Use the file service instead of reportsService
+      const result = fileStorageService.downloadProcessedDataCsv(dataToDownload, 'advisor_finder_data.csv');
       if (!result.success) {
         alert(`Error downloading data: ${result.error}`);
       } else {

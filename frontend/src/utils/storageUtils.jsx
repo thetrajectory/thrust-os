@@ -26,7 +26,8 @@ const STORAGE_KEYS = {
   FIND_ADVISOR_ANALYTICS: 'trajectory_find_advisor_analytics',
   FIND_ADVISOR_FILTER_ANALYTICS: 'trajectory_find_advisor_filterAnalytics',
   FIND_ADVISOR_PROCESS_STATUS: 'trajectory_find_advisor_process_status',
-  FIND_ADVISOR_CURRENT_STEP: 'trajectory_find_advisor_currentStep'
+  FIND_ADVISOR_CURRENT_STEP: 'trajectory_find_advisor_currentStep',
+  FIND_ADVISOR_PROCESSED_COUNT: 'trajectory_find_advisor_processed_count',
 };
 
 // Save data to session storage with key

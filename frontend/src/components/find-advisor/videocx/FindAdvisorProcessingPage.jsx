@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import findAdvisorOrchestrator from '../../../services/find-advisor/videocx/findAdvisorOrchestrator';
 import storageUtils from '../../../utils/storageUtils';
+import fileStorageService from '../../../services/find-advisor/videocx/fileStorageService';
 
 const FindAdvisorProcessingPage = () => {
   const navigate = useNavigate();
@@ -264,12 +265,15 @@ const FindAdvisorProcessingPage = () => {
 
   // Handle viewing results
   const handleViewResults = () => {
-    // Get the FULL processed data regardless of completion state
+    // Instead of storing full data in session storage:
     const allData = findAdvisorOrchestrator.processedData || loadedCsvData;
-  
-    // Save processed data
-    storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.FIND_ADVISOR_PROCESSED, allData);
-  
+
+    // Just store the count and some metadata
+    storageUtils.saveToStorage(
+      storageUtils.STORAGE_KEYS.FIND_ADVISOR_PROCESSED_COUNT,
+      allData ? allData.length : 0
+    );
+
     // Add termination analytics if cancelled
     if (isCancelling) {
       const terminationAnalytics = {
@@ -278,7 +282,7 @@ const FindAdvisorProcessingPage = () => {
         completedSteps: findAdvisorOrchestrator.currentStepIndex,
         totalSteps: findAdvisorOrchestrator.pipeline.length
       };
-  
+
       storageUtils.saveToStorage(
         storageUtils.STORAGE_KEYS.FIND_ADVISOR_ANALYTICS,
         { ...analytics, termination: terminationAnalytics }
