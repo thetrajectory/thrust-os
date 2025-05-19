@@ -5,6 +5,7 @@ import { Pie } from 'react-chartjs-2';
 import { useNavigate } from 'react-router-dom';
 import reportsService from '../services/reportsService';
 import storageUtils from '../utils/storageUtils';
+import fileStorageService from '../services/fileStorageService';
 
 // Register Chart.js components
 ChartJS.register(ArcElement, Tooltip, Legend);
@@ -19,7 +20,6 @@ const ResultsPage = (props) => {
   const [finalCount, setFinalCount] = useState(props.finalCount || 0);
   const [analytics, setAnalytics] = useState(props.analytics || {});
   const [filterAnalytics, setFilterAnalytics] = useState(props.filterAnalytics || {});
-  const [customFilename, setCustomFilename] = useState('');
 
   const [stats, setStats] = useState({
     totalLeads: 0,
@@ -32,19 +32,31 @@ const ResultsPage = (props) => {
   // Load data from session storage on component mount
   useEffect(() => {
     // Load all required data from session storage
-    const storedProcessedData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.PROCESSED);
+    // const storedProcessedData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.PROCESSED);
     const storedFilteredData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.FILTERED);
     const storedAnalytics = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.ANALYTICS);
     const storedFilterAnalytics = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.FILTER_ANALYTICS);
     const storedCsvData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.CSV_DATA);
 
+    const storedProcessedData = fileStorageService.getProcessedData();
+
+    if (storedProcessedData && storedProcessedData.length > 0) {
+      setProcessedData(storedProcessedData);
+    } else {
+      // Fallback to session storage for backward compatibility
+      const sessionStorageData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.PROCESSED);
+      if (sessionStorageData && sessionStorageData.length > 0) {
+        setProcessedData(sessionStorageData);
+      }
+    }
+
     console.log("Loaded analytics:", storedAnalytics);
     console.log("Loaded filter analytics:", storedFilterAnalytics);
 
     // Set state from storage
-    if (storedProcessedData && storedProcessedData.length > 0) {
-      setProcessedData(storedProcessedData);
-    }
+    // if (storedProcessedData && storedProcessedData.length > 0) {
+    //   setProcessedData(storedProcessedData);
+    // }
 
     if (storedCsvData && storedCsvData.length > 0) {
       setOriginalCount(storedCsvData.length);
@@ -141,12 +153,18 @@ const ResultsPage = (props) => {
   };
 
   const handleDownloadData = () => {
-    // Load data to download
-    let dataToDownload = processedData;
+    // Use all processed data for download
+    let dataToDownload = fileStorageService.getProcessedData();
+
+    // If not available, try loading directly from storage
+    if (!dataToDownload || dataToDownload.length === 0) {
+      dataToDownload = processedData;
+      console.log("Loaded from PROCESSED storage:", dataToDownload);
+    }
 
     if (!dataToDownload || dataToDownload.length === 0) {
+      // Last resort: try loading from session storage
       dataToDownload = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.PROCESSED);
-      console.log("Loaded from PROCESSED storage:", dataToDownload);
     }
 
     // If still not available, try original CSV data
@@ -156,15 +174,8 @@ const ResultsPage = (props) => {
     }
 
     if (dataToDownload && dataToDownload.length > 0) {
-      // Create filename with .csv extension if not provided
-      let filename = customFilename.trim();
-      if (filename && !filename.toLowerCase().endsWith('.csv')) {
-        filename += '.csv';
-      } else if (!filename) {
-        filename = 'enriched_data_' + new Date().toISOString().slice(0, 10) + '.csv';
-      }
-
-      const result = reportsService.downloadProcessedDataCsv(dataToDownload, filename);
+      // Use fileStorageService directly instead of reportsService
+      const result = fileStorageService.downloadProcessedDataCsv(dataToDownload, 'incommon_processed_data.csv');
       if (!result.success) {
         alert(`Error downloading data: ${result.error}`);
       }
@@ -173,15 +184,8 @@ const ResultsPage = (props) => {
     }
   };
 
+  // Using arrow function to preserve 'this' context
   const handleDownloadReport = () => {
-    // Create filename with .csv extension if not provided
-    let filename = customFilename.trim();
-    if (filename && !filename.toLowerCase().endsWith('.csv')) {
-      filename += '.csv';
-    } else if (!filename) {
-      filename = 'enrichment_report_' + new Date().toISOString().slice(0, 10) + '.csv';
-    }
-
     // Retrieve all necessary data from storage to ensure complete analytics
     const storedProcessedData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.PROCESSED) || [];
     const storedFilteredData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.FILTERED) || [];
@@ -219,7 +223,7 @@ const ResultsPage = (props) => {
     console.log("Enrichment state for report:", enrichmentState);
 
     try {
-      const result = reportsService.downloadReportsCsv(enrichmentState, filename);
+      const result = reportsService.downloadReportsCsv(enrichmentState, 'incommon_analytics_report.csv');
       if (!result.success) {
         alert(`Error downloading report: ${result.error}`);
       } else {
@@ -263,24 +267,6 @@ const ResultsPage = (props) => {
               <p><span className="font-medium">Relevant Titles:</span> {formatNumber(stats.relevantCount)}</p>
               <p><span className="font-medium">Irrelevant Titles:</span> {formatNumber(stats.irrelevantCount)}</p>
               <p><span className="font-medium">Final Selected Leads:</span> {formatNumber(stats.finalCount)}</p>
-            </div>
-
-            {/* Add filename input field */}
-            <div className="mt-4">
-              <label htmlFor="customFilename" className="block text-sm font-medium text-gray-700 mb-1">
-                Output Filename (optional)
-              </label>
-              <input
-                type="text"
-                id="customFilename"
-                value={customFilename}
-                onChange={(e) => setCustomFilename(e.target.value)}
-                placeholder="Enter filename for download"
-                className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Leave blank for default filename or enter your preferred name (.csv will be added if missing)
-              </p>
             </div>
 
             <div className="mt-6 space-y-3">

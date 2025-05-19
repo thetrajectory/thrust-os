@@ -1,7 +1,8 @@
-// Modify FindAdvisorResultsPage.jsx
 import { ArcElement, Chart as ChartJS, Legend, Tooltip } from 'chart.js';
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import fileStorageService from '../../../services/find-advisor/videocx/fileStorageService';
+import findAdvisorOrchestrator from '../../../services/find-advisor/videocx/findAdvisorOrchestrator';
 import reportsService from '../../../services/find-advisor/videocx/reportsService';
 import storageUtils from '../../../utils/storageUtils';
 
@@ -14,20 +15,23 @@ const FindAdvisorResultsPage = () => {
   // State for data and statistics
   const [processedData, setProcessedData] = useState([]);
   const [originalCount, setOriginalCount] = useState(0);
-  // Add new state for custom filename
-  const [customFilename, setCustomFilename] = useState('');
 
   // Load data from session storage on component mount
   useEffect(() => {
-    // Load all required data from session storage
-    const storedProcessedData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.FIND_ADVISOR_PROCESSED);
-    const storedCsvData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.CSV_DATA);
+    // Instead of loading full data from session storage:
+    const processedDataCount = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.FIND_ADVISOR_PROCESSED_COUNT) || 0;
 
-    // Set state from storage
-    if (storedProcessedData && storedProcessedData.length > 0) {
-      setProcessedData(storedProcessedData);
+    // Get the data from the orchestrator/file service
+    const processedData = findAdvisorOrchestrator.processedData || fileStorageService.getProcessedData() || [];
+    setProcessedData(processedData);
+
+    // For count-only information
+    if (processedData.length === 0 && processedDataCount > 0) {
+      setProcessedData([{ placeholder: true, count: processedDataCount }]);
     }
 
+    // Load other metadata
+    const storedCsvData = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.CSV_DATA);
     if (storedCsvData && storedCsvData.length > 0) {
       setOriginalCount(storedCsvData.length);
     }
@@ -42,8 +46,8 @@ const FindAdvisorResultsPage = () => {
   const handleDownloadData = () => {
     let dataToDownload = processedData;
 
-    if (!dataToDownload || dataToDownload.length === 0) {
-      dataToDownload = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.FIND_ADVISOR_PROCESSED);
+    if (!dataToDownload || dataToDownload.length === 0 || dataToDownload[0]?.placeholder) {
+      dataToDownload = findAdvisorOrchestrator.processedData || fileStorageService.getProcessedData();
     }
 
     if (!dataToDownload || dataToDownload.length === 0) {
@@ -51,15 +55,8 @@ const FindAdvisorResultsPage = () => {
     }
 
     if (dataToDownload && dataToDownload.length > 0) {
-      // Create filename with .csv extension if not provided
-      let filename = customFilename.trim();
-      if (filename && !filename.toLowerCase().endsWith('.csv')) {
-        filename += '.csv';
-      } else if (!filename) {
-        filename = 'advisor_finder_data.csv';
-      }
-
-      const result = reportsService.downloadProcessedDataCsv(dataToDownload, filename);
+      // Use the file service instead of reportsService
+      const result = fileStorageService.downloadProcessedDataCsv(dataToDownload, 'advisor_finder_data.csv');
       if (!result.success) {
         alert(`Error downloading data: ${result.error}`);
       } else {
@@ -67,28 +64,6 @@ const FindAdvisorResultsPage = () => {
       }
     } else {
       alert('No data available to download.');
-    }
-  };
-
-  const handleDownloadReport = () => {
-    // Create filename with .csv extension if not provided
-    let filename = customFilename.trim();
-    if (filename && !filename.toLowerCase().endsWith('.csv')) {
-      filename += '.csv';
-    } else if (!filename) {
-      filename = 'advisor_finder_report.csv';
-    }
-
-    const result = reportsService.downloadReportsCsv({
-      processedData,
-      analytics: storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.FIND_ADVISOR_ANALYTICS),
-      filterAnalytics: storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.FIND_ADVISOR_FILTER_ANALYTICS)
-    }, filename);
-
-    if (!result.success) {
-      alert(`Error generating report: ${result.error}`);
-    } else {
-      alert("Report downloaded successfully!");
     }
   };
 
@@ -109,24 +84,6 @@ const FindAdvisorResultsPage = () => {
               <p><span className="font-medium">Final Processed Leads:</span> {formatNumber(processedData.length)}</p>
             </div>
 
-            {/* Add filename input field */}
-            <div className="mt-4">
-              <label htmlFor="customFilename" className="block text-sm font-medium text-gray-700 mb-1">
-                Output Filename (optional)
-              </label>
-              <input
-                type="text"
-                id="customFilename"
-                value={customFilename}
-                onChange={(e) => setCustomFilename(e.target.value)}
-                placeholder="Enter filename for download"
-                className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Leave blank for default filename or enter your preferred name (.csv will be added if missing)
-              </p>
-            </div>
-
             <div className="mt-6 space-y-3">
               <button
                 onClick={handleDownloadData}
@@ -136,7 +93,19 @@ const FindAdvisorResultsPage = () => {
               </button>
 
               <button
-                onClick={handleDownloadReport}
+                onClick={() => {
+                  const result = reportsService.downloadReportsCsv({
+                    processedData,
+                    analytics: storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.FIND_ADVISOR_ANALYTICS),
+                    filterAnalytics: storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.FIND_ADVISOR_FILTER_ANALYTICS)
+                  }, 'advisor_finder_report.csv');
+
+                  if (!result.success) {
+                    alert(`Error generating report: ${result.error}`);
+                  } else {
+                    alert("Report downloaded successfully!");
+                  }
+                }}
                 className="w-full bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 mt-3"
               >
                 Download Analytics Report
