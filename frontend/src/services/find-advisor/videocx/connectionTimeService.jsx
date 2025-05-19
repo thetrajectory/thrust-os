@@ -65,22 +65,54 @@ function calculateConnectionTime(row) {
     const connectedOnString = row.connected_on;
 
     if (!connectedOnString) {
+        console.warn(`No connected_on date found for row:`, row);
         return 'Unknown';
     }
 
     try {
-        // Parse the connection date
-        const connectedOn = new Date(connectedOnString);
+        // For debugging
+        console.log(`Calculating connection time from date: ${connectedOnString}`);
 
-        // Calculate the time since connection
+        // Ensure date is in ISO format YYYY-MM-DD
+        let isoDate;
+        if (connectedOnString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            // Already in YYYY-MM-DD format
+            isoDate = connectedOnString;
+        } else {
+            // Try to parse the date
+            const dateObj = new Date(connectedOnString);
+            if (!isNaN(dateObj.getTime())) {
+                isoDate = dateObj.toISOString().split('T')[0];
+            } else {
+                return `Unknown format: ${connectedOnString}`;
+            }
+        }
+        
+        // Create a date object at the start of the day
+        const connectedOn = new Date(`${isoDate}T00:00:00.000Z`);
+        
+        // Verify the date is valid
+        if (isNaN(connectedOn.getTime())) {
+            console.warn(`Invalid date from string: ${connectedOnString}`);
+            return `Unknown format: ${connectedOnString}`;
+        }
+
+        // Check if the date is in the future
         const now = new Date();
-        const diffTime = Math.abs(now - connectedOn);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        if (connectedOn > now) {
+            console.log(`Date is in the future: ${connectedOnString}`);
+            return 'Future date';
+        }
 
-        // Calculate years, months, and remaining days
+        // Calculate time since connection
+        const diffTime = Math.abs(now - connectedOn);
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+        // Calculate years, months, and days
         const years = Math.floor(diffDays / 365);
-        const months = Math.floor((diffDays % 365) / 30);
-        const days = diffDays % 30;
+        const remainingDaysAfterYears = diffDays % 365;
+        const months = Math.floor(remainingDaysAfterYears / 30);
+        const days = remainingDaysAfterYears % 30;
 
         // Format the duration string
         let connectionTime = '';
@@ -96,8 +128,8 @@ function calculateConnectionTime(row) {
 
         return connectionTime;
     } catch (error) {
-        console.error(`Error calculating connection time: ${error.message}`);
-        return 'Error';
+        console.error(`Error calculating connection time from ${connectedOnString}:`, error);
+        return 'Error: ' + error.message;
     }
 }
 

@@ -297,8 +297,23 @@ async function upsertToSupabase(linkedinUrl, personId, data, fullName) {
 
         const companyName = data.company || data.organization?.name || data.person?.organization?.name;
         const position = data.position || data.person?.title;
-        // Extract connected_on from data
-        const connectedOn = data.connected_on || new Date().toISOString().split('T')[0];
+        
+        // Extract connected_on from data and ensure it's properly formatted
+        let connectedOn = data.connected_on || '';
+        
+        // Ensure it's in YYYY-MM-DD format if it exists
+        if (connectedOn && !connectedOn.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            console.warn(`connected_on not in YYYY-MM-DD format: "${connectedOn}". Attempting to format.`);
+            try {
+                // Try to parse and format the date
+                const dateObj = new Date(connectedOn);
+                if (!isNaN(dateObj.getTime())) {
+                    connectedOn = dateObj.toISOString().split('T')[0];
+                }
+            } catch (e) {
+                console.error(`Failed to format connected_on date: ${e.message}`);
+            }
+        }
 
         if (existingRecord) {
             // Update existing record

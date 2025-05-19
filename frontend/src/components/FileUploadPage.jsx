@@ -16,11 +16,10 @@ const FileUploadPage = () => {
         if (!dateStr) return null;
 
         // If it's already in ISO format, just return it
-        if (dateStr.includes('T') || dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-            return dateStr;
+        if (dateStr.match(/^\d{4}-\d{2}-\d{2}(T.*)?$/)) {
+            return dateStr.split('T')[0]; // Extract just the date part if it has time
         }
 
-        // Try to parse formats like "17-Jan-18"
         try {
             // Handle format like "17-Jan-18" or variations
             const match = dateStr.match(/(\d{1,2})[- ]([A-Za-z]{3})[- ](\d{2}|\d{4})/);
@@ -33,9 +32,13 @@ const FileUploadPage = () => {
                     'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
                 };
                 month = months[monthStr];
+                if (!month) {
+                    console.warn(`Unknown month in date: ${dateStr}`);
+                    return new Date().toISOString().split('T')[0]; // Use today as fallback
+                }
 
                 let year = match[3];
-                // Convert 2-digit year to 4-digit (assuming 20xx for years less than 50, 19xx otherwise)
+                // Convert 2-digit year to 4-digit
                 if (year.length === 2) {
                     const twoDigitYear = parseInt(year);
                     year = twoDigitYear < 50 ? `20${year}` : `19${year}`;
@@ -44,12 +47,35 @@ const FileUploadPage = () => {
                 // Return YYYY-MM-DD format
                 return `${year}-${month}-${day}`;
             }
-        } catch (e) {
-            console.error(`Failed to parse date: ${dateStr}`, e);
-        }
 
-        // If all parsing fails, return today's date as fallback
-        return new Date().toISOString().split('T')[0];
+            // Handle DD/MM/YYYY or MM/DD/YYYY format
+            const slashMatch = dateStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+            if (slashMatch) {
+                // For simplicity, assume DD/MM/YYYY format
+                const day = slashMatch[1].padStart(2, '0');
+                const month = slashMatch[2].padStart(2, '0');
+                const year = slashMatch[3];
+
+                // Validate month and day
+                if (parseInt(month) > 0 && parseInt(month) <= 12 &&
+                    parseInt(day) > 0 && parseInt(day) <= 31) {
+                    return `${year}-${month}-${day}`;
+                }
+            }
+
+            // Try using Date object for other formats
+            const parsedDate = new Date(dateStr);
+            if (!isNaN(parsedDate.getTime())) {
+                return parsedDate.toISOString().split('T')[0];
+            }
+
+            // If all else fails, use today's date
+            console.warn(`Failed to parse date: ${dateStr}, using today`);
+            return new Date().toISOString().split('T')[0];
+        } catch (e) {
+            console.error(`Error parsing date: ${dateStr}`, e);
+            return new Date().toISOString().split('T')[0]; // Use today's date as fallback
+        }
     }
 
     const handleFileChange = (e) => {
@@ -133,8 +159,14 @@ const FileUploadPage = () => {
                         row.company = row.organization;
                     }
 
-                    // Add connected_on field if it exists, or use current timestamp
-                    row.connected_on = parseCustomDate(row.connected_on) || new Date().toISOString().split('T')[0];
+                    // Process connected_on field - always assign a value
+                    const originalConnectedOn = row.connected_on;
+                    row.connected_on = originalConnectedOn ? parseCustomDate(originalConnectedOn) : new Date().toISOString().split('T')[0];
+
+                    // Log for debugging
+                    if (originalConnectedOn) {
+                        console.log(`Converted date: ${originalConnectedOn} -> ${row.connected_on}`);
+                    }
 
                     // Initialize relevanceTag field
                     row.relevanceTag = '';
