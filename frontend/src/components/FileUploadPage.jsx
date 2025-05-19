@@ -14,12 +14,12 @@ const FileUploadPage = () => {
 
     function parseCustomDate(dateStr) {
         if (!dateStr) return null;
-    
+
         // If it's already in ISO format, just return it
-        if (dateStr.match(/^\d{4}-\d{2}-\d{2}(T.*)?$/)) {
-            return dateStr.split('T')[0]; // Extract just the date part if it has time
+        if (dateStr.includes('T') || dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            return dateStr;
         }
-    
+
         // Try to parse formats like "17-Jan-18"
         try {
             // Handle format like "17-Jan-18" or variations
@@ -33,30 +33,23 @@ const FileUploadPage = () => {
                     'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
                 };
                 month = months[monthStr];
-                if (!month) return dateStr; // If month parsing fails, return original
-    
+
                 let year = match[3];
-                // Convert 2-digit year to 4-digit
+                // Convert 2-digit year to 4-digit (assuming 20xx for years less than 50, 19xx otherwise)
                 if (year.length === 2) {
                     const twoDigitYear = parseInt(year);
                     year = twoDigitYear < 50 ? `20${year}` : `19${year}`;
                 }
-    
+
                 // Return YYYY-MM-DD format
                 return `${year}-${month}-${day}`;
-            }
-    
-            // Try using Date object for other formats
-            const parsedDate = new Date(dateStr);
-            if (!isNaN(parsedDate.getTime())) {
-                return parsedDate.toISOString().split('T')[0];
             }
         } catch (e) {
             console.error(`Failed to parse date: ${dateStr}`, e);
         }
-    
-        // Return original string if parsing fails
-        return dateStr;
+
+        // If all parsing fails, return today's date as fallback
+        return new Date().toISOString().split('T')[0];
     }
 
     const handleFileChange = (e) => {
@@ -141,17 +134,7 @@ const FileUploadPage = () => {
                     }
 
                     // Add connected_on field if it exists, or use current timestamp
-                    if (row.connected_on) {
-                        // Try to normalize the date format but preserve the original value if parsing fails
-                        const parsedDate = parseCustomDate(row.connected_on);
-                        if (parsedDate) {
-                            row.connected_on = parsedDate;
-                        }
-                        // If parsing fails, keep the original value instead of using today's date
-                    } else {
-                        // Only if connected_on is completely missing, use today's date as fallback
-                        row.connected_on = new Date().toISOString().split('T')[0];
-                    }
+                    row.connected_on = parseCustomDate(row.connected_on) || new Date().toISOString().split('T')[0];
 
                     // Initialize relevanceTag field
                     row.relevanceTag = '';

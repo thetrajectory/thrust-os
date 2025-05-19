@@ -298,7 +298,7 @@ async function upsertToSupabase(linkedinUrl, personId, data, fullName) {
         const companyName = data.company || data.organization?.name || data.person?.organization?.name;
         const position = data.position || data.person?.title;
         // Extract connected_on from data
-        const connectedOn = data.connected_on || '';
+        const connectedOn = data.connected_on || new Date().toISOString().split('T')[0];
 
         if (existingRecord) {
             // Update existing record
@@ -376,8 +376,7 @@ async function processApolloLead(row, index, apiKey, logCallback, isIrrelevant =
         // Create full Apollo-like data structure
         const apolloData = {
             person: person,
-            organization: organization,
-            connected_on: row.connected_on
+            organization: organization
         };
 
         // Store the full raw JSON data

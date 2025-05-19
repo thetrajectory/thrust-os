@@ -67,6 +67,9 @@ class FileStorageService {
                 // Title relevance data
                 titleRelevance: row.titleRelevance || '',
 
+                // Connection Time Analysis
+                connectionTime: row.connectionTime || '',
+
                 // Apollo enrichment fields - person
                 'person.id': row['person.id'] || '',
                 'person.first_name': row['person.first_name'] || row.person?.first_name || '',
