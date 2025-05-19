@@ -108,6 +108,14 @@ class FileStorageService {
 
                 // Raw OpenAI advisor analysis response
                 advisorAnalysisResponse: row.advisorAnalysisResponse || '',
+                customer: row.advisorAnalysisResponse ?
+                    row.advisorAnalysisResponse.split('~')[0]?.replace(/Customer:\s*/i, '').trim() : '',
+
+                seniority: row.advisorAnalysisResponse ?
+                    row.advisorAnalysisResponse.split('~')[1]?.trim() : '',
+
+                experience_relevance: row.advisorAnalysisResponse ?
+                    row.advisorAnalysisResponse.split('~')[2]?.trim() : '',
             };
             return flatRow;
         });
