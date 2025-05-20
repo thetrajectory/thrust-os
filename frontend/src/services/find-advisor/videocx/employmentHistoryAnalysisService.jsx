@@ -3,253 +3,121 @@ import apiClient from '../../../utils/apiClient';
 
 // Employment history analysis prompt
 const EMPLOYMENT_HISTORY_PROMPT = (employmentHistory) => {
-  return `"# 🧠 FINAL EVALUATION PROMPT — ADVISOR SCORING FOR TORTOISE (EXHAUSTIVE VERSION)
-
-You are evaluating a potential strategic advisor for **Tortoise** — a B2B SaaS platform that enables large Indian enterprises (500+ employees) to offer premium devices (phones, laptops) as employee benefits via:
-
-* **Zero cost to employer**
-* **Payroll deduction for employees**
-* **Full HRMS + approval integration**
-* **GST and financial optimization**
-* **Repair, replacement, and leasing lifecycle management**
-
+  return `"## :brain: FINAL ADVISOR SCORING PROMPT — VIDEOCX.IO
+You are evaluating a potential advisor for **VideoCX.io** — an enterprise video infrastructure platform powering compliant, regulated customer interactions in BFSI: onboarding, KYC, credit verification, virtual advisory, and policy servicing.
+Your job is to assess whether the advisor is **strategically relevant and trusted** enough to influence or support our GTM motion.
+Return only a structured 3-part score:
+1. **Customer:** Whether they are *currently* in a buyer role
+2. **Seniority:** Based on total professional years
+3. **Experience Relevance:** Based on trust path exposure and strategic proximity
+Use the scoring rubrics below. Then return your evaluation using the strict output format.
 ---
-
-## 🎯 OUR BUYERS
-
-We sell to enterprise functions including:
-
-**Primary Buyers**
-
-* Head of HR
-* Head of Total Rewards / Compensation & Benefits
-* Head of Payroll / FinanceOps
-
-**Key Enablers**
-
-* CHRO org
-* PeopleOps leadership
-* Procurement (logistics/sourcing alignment)
-* Finance (GST, deductions, off-balance-sheet leasing)
-* System integrators (Darwinbox, SAP, GreytHR, etc.)
-
+## :dart: PRODUCT + BUYER CONTEXT
+VideoCX.io is used by 60+ BFSI organizations including banks, NBFCs, TPAs, and insurers.
+Core use cases:
+* Video KYC & digital onboarding
+* Credit verification
+* Customer support & policy servicing
+* Virtual RM / advisory flows
+**Target Buyers:**
+* COOs
+* CIOs / Infra & IT heads
+* Heads of Risk, Compliance, Ops
+* Transformation / CX leads
+**Who influences deals:**
+* Ex-risk/ops leaders who’ve done onboarding/KYC transitions
+* Big 4 consultants or regtech PMs who guided compliance change
+* TCS/Infosys delivery leads who implemented onboarding stacks
+* Semi-retired execs still advising BFSI orgs
+* Infra PMs or GTM leaders from BFSI-focused SaaS vendors
 ---
-
-## 📥 ADVISOR INPUT DROPZONE
-
-Analyze the following advisor based on their employment history:
-
+## :straight_ruler: AXIS 1: SENIORITY (1–5)
+Score only on **total years of experience** and **role maturity**.
+| Score | Definition                                                |
+| ----- | --------------------------------------------------------- |
+| 5     | 15+ years — SVP+, CXO, Partner, or Board-level roles      |
+| 4     | 10–15 years — Director+, transformation lead, seasoned PM |
+| 3     | 5–10 years — mid-level PM, manager, product owner         |
+| 2     | 2–5 years — junior manager, associate consultant          |
+| 1     | <2 years — early career, no strategic experience          |
+→ **Strict rule:** Seniority ≠ brand. Score based on scope + years, not just org.
 ---
-
-### Experience of advisor for you to analyze starts
-
+## :brain: AXIS 2: EXPERIENCE RELEVANCE (1–5)
+This is your most important signal. Score based on the **trust value, repeatability, and adjacency** of the advisor’s past roles.
+Prioritize those who influenced buyers from **outside**, across **multiple orgs**, with **system-level exposure**.
+| Score | Definition                                                                                                                                                                                                               |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **5** | :white_check_mark: **Top-tier indirect trust path exposure**. Has worked across multiple BFSI clients/orgs as an advisor, integrator, delivery lead, or regtech PM in onboarding/KYC/compliance. May also have direct buyer role in past. |
+| **4** | :white_check_mark: **One strong indirect trust role** in buyer ecosystem — e.g., SaaS PM, Big 4 consultant, BFSI transformation lead. Deep context but not repeated across orgs.                                                          |
+| **3** | :large_yellow_circle: **Direct buyer experience only** — e.g., Head of Risk or Ops at BFSI org, but no consulting, delivery, or system-wide role. Trusted inside one org, not across many.                                                  |
+| **2** | :warning: BFSI-adjacent roles, but unclear exposure — e.g., CX manager, branch ops, support. Weak trust vector.                                                                                                                 |
+| **1** | :x: Wrong function or domain. No BFSI onboarding, infra, or compliance context — e.g., B2C SaaS, ecommerce, HR, edtech.                                                                                                    |
+### :dart: CONCEPTUAL CLARITY (for scoring relevance):
+**Relevance is high when:**
+* Advisor had **system-level access** to onboarding/KYC decision cycles
+* Worked **across orgs** (consulting, delivery, regtech)
+* Was a **known enabler** of buyer teams, even if not the buyer
+* Was trusted to **guide or unblock** compliance, risk, or ops teams
+* Has **repeatable pattern** across BFSI clients
+**Relevance is low when:**
+* BFSI tag exists, but only in sales/support/ops branches
+* Worked *in* buyer org, but never influenced change
+* Worked in unrelated verticals (media, ecommerce, health)
+* Had brand name logos but in irrelevant functions
+### :lock: Hardcoded 5/5 Examples:
+* “Senior Consultant @ FMI” (known BFSI onboarding consultant)
+* “Delivery Lead @ TCS, BFSI vertical” (multi-client onboarding stacks)
+* “GTM Advisor @ Regtech onboarding SaaS”
+* “Advisor to 3 NBFCs on credit infra transitions”
+* “Ex-COO, now board member to SFB transformation program”
+---
+## :closed_lock_with_key: CURRENT BUYER (Yes/No)
+Look at the most recent role/title/org.
+Say **Yes** if:
+* Currently employed at a BFSI org (Bank, NBFC, Insurer, TPA)
+* In a role related to Ops, Risk, Compliance, Infra, or Transformation
+* Could reasonably influence or veto a product like ours
+Say **No** if:
+* Advisory/consulting/fractional role
+* Exited industry
+* In unrelated vertical or function
+* No longer in decision pathway
+→ **Be strict. If unsure, default to No.**
+---
+## :inbox_tray: INPUT FORMAT (DROPZONE)
+Analyze the following advisor’s experience snippet:
+## Experience of advisor for you to analyze starts
 ${employmentHistory}
-
-### Experience of advisor for you to analyze ends
-
+## Experience of advisor for you to analyze ends
 ---
-
-## ✅ YOUR TASK
-
-You will score the advisor across three axes:
-
----
-
-### 1️⃣ CUSTOMER
-
-Are they currently in a **buyer role** for Tortoise?
-
-Mark **Yes** only if all are true:
-
-* Current title is in HR, Comp & Benefits, or Payroll/Finance
-* Company has >500 employees
-* Role implies decision rights (e.g., Head of, VP, Director)
-
-If they are retired, advising, consulting, or operating in a non-buyer function, mark **No**
-
----
-
-### 2️⃣ SENIORITY (YEARS OF EXPERIENCE)
-
-Score based purely on how long they've worked. Do **not** mix this with relevance or function.
-
-| Score | Total Experience |
-| ----- | ---------------- |
-| 5     | 15+ years        |
-| 4     | 10–14 years      |
-| 3     | 5–9 years        |
-| 2     | 2–4 years        |
-| 1     | <2 years         |
-
-Use visible start dates across roles. Round down if uncertain.
-
----
-
-### 3️⃣ EXPERIENCE RELEVANCE (HIGH TRUST, INDIRECT BUYER CREDIBILITY)
-
-This is the most important axis.
-
-You are scoring **how strategically relevant the advisor's past roles are** to **Tortoise's GTM motion**, based on:
-
-* **Indirect trust paths to our buyers**
-* **Roles that helped buyers implement/pay for similar systems**
-* **Past decision-maker roles in relevant orgs (secondary)**
-* **Clear system + workflow exposure** (especially around benefits, payroll, GST, HRMS)
-
-This is not about popularity or fame — this is about **trustable adjacency**.
-
----
-
-## 🟩 SCORE: 5/5 — High Trust Enabler + Historical Buyer Proximity
-
-These advisors are **credible to Tortoise buyers** because they've consistently:
-
-* Advised, implemented, or enabled programs for HR/Payroll orgs
-* Worked at HRTech, Payroll SaaS, Benefits SaaS, or enterprise consultancies
-* Delivered projects related to device perks, deductions, approval flows, or GST design
-* OR held decision-making buyer roles *and* now operate in consulting / GTM / advisory capacities
-
-📌 **Hardcoded Roles**:
-
-* HR Transformation Consultant @ Big 4 (EY, PwC, KPMG, Deloitte)
-* GTM/Partnerships Lead @ Darwinbox, PeopleStrong, GreytHR
-* Payroll Ops Head @ SAP/Oracle implementation vendor
-* Flex Benefits Architect / Device Perks Program Owner
-* HRMS Deployment Leader @ Fortune 500 firm
-
-📌 **Company Types**:
-
-* Indian IT/ITES (Infosys, Wipro, TCS scale)
-* BFSI, Conglomerates, FMCG with 10K+ employees
-* HRTech, CompTech, Payroll SaaS with Indian enterprise footprint
-* System integrators or enterprise delivery teams
-
-📌 **Conceptual Anchors**:
-
-* Has "walked the floor" of large HR/Payroll teams
-* Speaks the language of **GST, deduction workflows, HRMS**, **perks UX**
-* Buyer would say: "We'd trust them to help us pick or implement Tortoise"
-
----
-
-## 🟨 SCORE: 4/5 — Indirect Enabler with Buyer Context
-
-These advisors have **vendor-side or platform-side experience**, with some buyer overlap:
-
-* Worked in GTM, delivery, or systems roles related to payroll/HR
-* Repeated exposure to buyer orgs without owning final decision
-* Less likely to have designed strategy, but often implemented tools
-
-📌 **Hardcoded Roles**:
-
-* HRTech Implementation Consultant
-* Solutions Architect @ GreytHR, ZingHR, etc.
-* Enterprise AE or CS Lead with repeated HR buyer interface
-* Comp Analyst turned product specialist in SaaS
-
-📌 **Company Types**:
-
-* Mid-sized HRTech firms
-* Regional system integrators
-* Payroll solution providers
-
-📌 **Conceptual Anchors**:
-
-* Helped HR teams deploy, even if they didn't buy
-* Understand approval flows, employee UX, payroll sync
-* Buyer would say: "They helped us roll out a tool — not strategic, but useful"
-
----
-
-## 🟨 SCORE: 3/5 — Former Buyer (Single Org, No Ecosystem Leverage)
-
-These advisors have held **relevant buyer roles**, but:
-
-* Only inside one company
-* No proof of scale, no follow-on influence
-* Not advising now, not part of ecosystem flow
-
-📌 **Hardcoded Roles**:
-
-* CHRO @ 1000-person firm
-* Head of Total Rewards (internal-only)
-* Payroll lead in legacy firm with no transformation history
-
-📌 **Company Types**:
-
-* Tier 2 enterprises with unknown digital maturity
-* Internal HR-only environments
-
-📌 **Conceptual Anchors**:
-
-* They know what device perks are
-* Buyer would say: "They've done it, but wouldn't ask them for vendor picks"
-
----
-
-## 🟧 SCORE: 2/5 — Peripheral or Generalist HR
-
-Exposure exists, but not strategic. Often:
-
-* In startups or generalist ops orgs
-* No proof of systems, integrations, payroll logic
-* May speak HR language, but not at Tortoise scale
-
-📌 **Hardcoded Roles**:
-
-* HRBP at 200–300 person company
-* Admin Ops / Talent Partner hybrid roles
-* Culture/Engagement lead without budget influence
-
-📌 **Company Types**:
-
-* Early-stage startups
-* Remote-first orgs with outsourced HR
-
-📌 **Conceptual Anchors**:
-
-* Knows the vibe, not the infrastructure
-* Buyer would say: "Not relevant to our payroll and GST complexity"
-
----
-
-## 🟥 SCORE: 1/5 — No Relevance
-
-Zero buyer overlap. Wrong function, vertical, or geography.
-
-📌 **Hardcoded Roles**:
-
-* Product/Marketing in D2C or SaaS
-* CTO, Tech Architect, Design
-* D2C startup founder
-
-📌 **Conceptual Anchors**:
-
-* Buyer would say: "I don't know why they're in the room"
-
----
-
-## 🧾 REQUIRED OUTPUT FORMAT (STRICT)
-Customer: <Yes/No>
-
+## :outbox_tray: OUTPUT FORMAT (MANDATORY)
+Return only this:
+"
+  Customer: <Yes /No >
+    ~
+    Seniority: X / 5
+    [One tight, info - dense justification — total years, role scope]
+  ~
+    Experience relevance: X / 5
+    [One tight, info - dense justification — trust path, role pattern, buyer proximity]
+"
+### :white_check_mark: Example
+"
+  Customer: No
+  ~
+    Seniority: 4 / 5
+  12 + years across strategy and ops roles, including VP and SVP at regional BFSI org.
 ~
-Seniority: X/5  
-1-line justification — years calculated, total duration, approximate timeline
-
-~
-Experience relevance: X/5  
-One liner justification — based on trust proximity, actual context  and system patterning - actually give specific roles, reasoning on why their trust sytems, relevant experience adds, i.e. role/company/industry and timelines - bedense and no flaff needed, use acronyms if needed, but tell more. Remember one infodense line
-
-## 🧾 REQUIRED OUTPUT FORMAT (STRICT)
-
+    Experience relevance: 5 / 5
+Led onboarding advisory across 4 BFSI clients as consultant; deep repeatable trust path.
+"
 ---
-
-## 🧠 SCORING REMINDERS
-
-* Be strict. Do not reward generic SaaS or startup HR.
-* Highest score goes to those who can **credibly influence our buyer** through **advisory**, **delivery**, or **strategic ecosystem proximity**
-* Past buyers are valuable **only if** they now advise or are embedded in buyer-facing ecosystems
-* Penalize irrelevant verticals or "HR-adjacent" product roles unless they worked **inside buyer workflows**"`;
+### :octagonal_sign: STRICT INSTRUCTIONS:
+* No markdown, no extra symbols, no summarizing language
+* No total score — score only the 2 axes + customer flag
+* Do not hallucinate context — reason only from the input
+* Use hardcoded patterns AND conceptual logic to guide judgment
+* Be sharp. Be precise. Be consistent."`;
 };
 
 /**
@@ -339,7 +207,7 @@ export async function processEmploymentHistoryAnalysis(data, logCallback, progre
         try {
           // Get the actual index to update in the original data
           let targetIndex = originalIndex;
-          
+
           // If we couldn't find the index using the key, try a fallback approach
           if (targetIndex === undefined || targetIndex === -1) {
             targetIndex = data.findIndex(item =>
@@ -349,7 +217,7 @@ export async function processEmploymentHistoryAnalysis(data, logCallback, progre
                 item.first_name === row.first_name &&
                 item.last_name === row.last_name)
             );
-            
+
             if (targetIndex === -1) {
               logCallback(`Error: Could not map item ${index + 1} to original data. Skipping.`);
               throw new Error("Could not find matching index in original data");
@@ -411,7 +279,7 @@ export async function processEmploymentHistoryAnalysis(data, logCallback, progre
         continue;
       } else if (result.error) {
         errorCount++;
-        
+
         // Add error info to the processed data
         if (result.targetIndex >= 0 && result.targetIndex < processedData.length) {
           processedData[result.targetIndex] = {
@@ -422,7 +290,7 @@ export async function processEmploymentHistoryAnalysis(data, logCallback, progre
       } else {
         // Successfully processed
         processedCount++;
-        
+
         // Store the raw API response in the original data array
         if (result.targetIndex >= 0 && result.targetIndex < processedData.length) {
           processedData[result.targetIndex] = {
@@ -432,7 +300,7 @@ export async function processEmploymentHistoryAnalysis(data, logCallback, progre
           };
           logCallback(`Successfully stored analysis response at index ${result.targetIndex}`);
         }
-        
+
         // Update token usage
         if (result.result.tokens) {
           tokensUsed += result.result.tokens;
