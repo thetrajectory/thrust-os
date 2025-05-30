@@ -10,6 +10,14 @@ const RouteGuard = ({ children, requiredState, redirectTo }) => {
     return value !== null && value !== undefined;
   });
 
+  // Special case for custom engine upload route
+  if (redirectTo === '/upload' && requiredState.includes('CSV_DATA')) {
+    const isCustomEngine = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.IS_CUSTOM_ENGINE);
+    if (isCustomEngine) {
+      return stateExists ? children : <Navigate to="/custom-engine/upload" />;
+    }
+  }
+
   // If state exists, render children, otherwise redirect
   return stateExists ? children : <Navigate to={redirectTo} />;
 };

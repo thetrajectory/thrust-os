@@ -30,6 +30,18 @@ const STORAGE_KEYS = {
   FIND_ADVISOR_PROCESS_STATUS: 'trajectory_find_advisor_process_status',
   FIND_ADVISOR_CURRENT_STEP: 'trajectory_find_advisor_currentStep',
   FIND_ADVISOR_PROCESSED_COUNT: 'trajectory_find_advisor_processed_count',
+
+  // Engine-Builder Specific Keys
+  ENGINE_BUILDER_STATE: 'engine_builder_state',
+  ENGINE_BUILDER_SELECTED: 'engine_builder_selected',
+  PROCESSED_DATA: 'processed_data',
+  PROCESSING_ANALYTICS: 'processing_analytics',
+
+  CUSTOM_ENGINE_DATA: 'custom_engine_data',
+  CUSTOM_ENGINE_LOGS: 'trajectory_custom_engine_logs',
+  CUSTOM_ENGINE_STATUS: 'trajectory_custom_engine_status',
+  CUSTOM_ENGINE_METRICS: 'trajectory_custom_engine_metrics', // ADD THIS
+  CUSTOM_ENGINE_REAL_METRICS: 'trajectory_custom_engine_real_metrics',
 };
 
 // Save data to session storage with key

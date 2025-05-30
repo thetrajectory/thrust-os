@@ -128,12 +128,50 @@ const openAIAPI = {
     chatCompletion: async (data) => {
         try {
             const response = await apiClient.post('/openai/chat/completions', data);
+            // Track token usage if available in the response
+            const tokenUsage = response.data.usage || {
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                total_tokens: 0
+            };
+
+            // Store token usage for reporting
+            if (!window.tokenUsageMetrics) {
+                window.tokenUsageMetrics = {};
+            }
+
+            const model = data.model || 'unknown';
+            if (!window.tokenUsageMetrics[model]) {
+                window.tokenUsageMetrics[model] = {
+                    prompt_tokens: 0,
+                    completion_tokens: 0,
+                    total_tokens: 0,
+                    requests: 0
+                };
+            }
+
+            window.tokenUsageMetrics[model].prompt_tokens += tokenUsage.prompt_tokens || 0;
+            window.tokenUsageMetrics[model].completion_tokens += tokenUsage.completion_tokens || 0;
+            window.tokenUsageMetrics[model].total_tokens += tokenUsage.total_tokens || 0;
+            window.tokenUsageMetrics[model].requests += 1;
+
+            console.log(`Token usage for ${model}: ${JSON.stringify(tokenUsage)}`);
             return response.data;
         } catch (error) {
             console.error('Error in chatCompletion:', error.message);
             throw error;
         }
     }
+};
+
+// Add a method to get token usage metrics
+apiClient.getTokenUsageMetrics = () => {
+    return window.tokenUsageMetrics || {};
+};
+
+// Add a method to reset token usage metrics
+apiClient.resetTokenUsageMetrics = () => {
+    window.tokenUsageMetrics = {};
 };
 
 // Serper API methods
@@ -165,31 +203,63 @@ const serperAPI = {
 
     searchGoogle: async (query, params = {}) => {
         try {
-          console.log(`Performing Google search: ${query}`);
-    
-          // Construct the request body
-          const requestBody = {
-            q: query,
-            ...params // Additional parameters like gl, hl, num
-          };
-    
-          // Using our proxy server
-          const response = await apiClient.post('/serper/search', requestBody);
-          
-          // Return the data
-          return response.data;
+            console.log(`Performing Google search: ${query}`);
+
+            // Construct the request body
+            const requestBody = {
+                q: query,
+                ...params // Additional parameters like gl, hl, num
+            };
+
+            // Using our proxy server
+            const response = await apiClient.post('/serper/search', requestBody);
+
+            // Return the data
+            return response.data;
         } catch (error) {
-          console.error('Error in searchGoogle:', error.message);
-          throw error;
+            console.error('Error in searchGoogle:', error.message);
+            throw error;
         }
-      }
+    },
+    extractSitemaps: async (url, options = {}) => {
+        try {
+            console.log(`Extracting sitemaps for: ${url}`);
+
+            // Ensure URL is properly formatted 
+            if (typeof url !== 'string') {
+                throw new Error(`Invalid URL: ${JSON.stringify(url)}`);
+            }
+
+            // Ensure URL has a protocol
+            const formattedUrl = url.startsWith('http') ? url : `https://${url}`;
+
+            // Prepare request body with options
+            const requestBody = {
+                url: formattedUrl,
+                maxExecutionTime: options.maxExecutionTime || 60,
+                maxSitemapUrls: options.maxSitemapUrls || 100,
+                fetchTimeout: options.fetchTimeout || 5000
+            };
+
+            console.log(`Formatted URL for sitemap extraction: ${formattedUrl}`);
+
+            // Using our custom sitemap extraction endpoint
+            const response = await apiClient.post('/serper/sitemap', requestBody);
+
+            // Return the data
+            return response.data;
+        } catch (error) {
+            console.error('Error in extractSitemaps:', error.message);
+            throw error;
+        }
+    }
 };
 
 const extractTextAPI = {
     fromPdf: async (data) => {
         try {
             console.log(`Extracting text from PDF: ${data.url}`);
-            
+
             const response = await apiClient.post('/extract-text/pdf', data);
             return response.data;
         } catch (error) {
@@ -332,4 +402,6 @@ export default {
     web: webAPI,
     extractText: extractTextAPI,
     testConnection,
+    getTokenUsageMetrics: apiClient.getTokenUsageMetrics,
+    resetTokenUsageMetrics: apiClient.resetTokenUsageMetrics
 };

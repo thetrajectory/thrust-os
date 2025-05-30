@@ -134,7 +134,6 @@ app.post('/api/apollo/organizations/contacts/india', async (req, res) => {
 });
 
 // Apollo Fetch Other Country Leads
-// In server.js - Updated API endpoint for other countries
 app.post('/api/apollo/organizations/contacts/othercountries', async (req, res) => {
   try {
     console.log('Proxying Apollo organizations/contacts/othercountries request...', req.body);
@@ -319,46 +318,318 @@ app.post('/api/serper/website', async (req, res) => {
   }
 });
 
-// Serper sitemap API proxy
+// Custom sitemap extraction endpoint (replacing Serper sitemap API)
 app.post('/api/serper/sitemap', async (req, res) => {
   try {
-    console.log('Proxying Serper sitemap request...');
-    
-    const apiKey = process.env.SERPER_API_KEY;
-    if (!apiKey) {
-      return res.status(401).json({ error: 'Serper API key not configured' });
-    }
+    console.log('Processing custom sitemap extraction request...');
     
     // Validate request body
     if (!req.body || !req.body.url) {
       return res.status(400).json({ error: 'URL is required in request body' });
     }
-    
-    const response = await axios.post(
-      'https://api.serper.dev/api/sitemap',
-      req.body,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-KEY': apiKey
-        }
-      }
+
+    const websiteUrl = req.body.url;
+    const maxExecutionTime = req.body.maxExecutionTime || 60; // seconds
+    const maxSitemapUrls = req.body.maxSitemapUrls || 100;
+    const fetchTimeout = req.body.fetchTimeout || 5000; // milliseconds
+
+    console.log(`Extracting sitemaps for: ${websiteUrl}`);
+
+    const sitemaps = await extractSitemapsFromWebsite(
+      websiteUrl,
+      maxExecutionTime,
+      maxSitemapUrls,
+      fetchTimeout
     );
-    
-    console.log('Serper Sitemap API response received successfully');
-    res.json(response.data);
+
+    console.log(`Found ${sitemaps.length} sitemap URLs for ${websiteUrl}`);
+
+    res.json({
+      success: true,
+      url: websiteUrl,
+      sitemaps: sitemaps,
+      count: sitemaps.length
+    });
+
   } catch (error) {
-    console.error('Serper Sitemap API error:', error.message);
+    console.error('Custom sitemap extraction error:', error.message);
     
-    // Structured error response
-    res.status(error.response?.status || 500).json({
+    res.status(500).json({
       error: {
-        message: 'Error calling Serper Sitemap API',
-        details: error.response?.data || error.message
+        message: 'Error extracting sitemaps',
+        details: error.message
       }
     });
   }
 });
+
+// Helper functions for sitemap extraction
+async function extractSitemapsFromWebsite(websiteUrl, maxExecutionTime, maxSitemapUrls, fetchTimeout) {
+  // Ensure URL has protocol
+  const formattedUrl = formatWebsiteUrl(websiteUrl);
+
+  // Set up timeout protection
+  const startTime = new Date().getTime();
+  const maxTime = startTime + (maxExecutionTime * 1000);
+
+  // Define places to check for sitemaps
+  const sitemapLocations = [
+    "/robots.txt",
+    "/sitemap.xml",
+    "/sitemap_index.xml",
+    "/sitemap.php",
+    "/sitemap.txt",
+    "/wp-sitemap.xml",
+    "/sitemap_index.xml"
+  ];
+
+  // Store found sitemap URLs
+  let allSitemapUrls = [];
+
+  // First check robots.txt as it often contains sitemap references
+  try {
+    if (new Date().getTime() > maxTime) throw new Error("Execution time limit reached");
+
+    const robotsUrl = `${formattedUrl}/robots.txt`;
+    console.log(`Checking robots.txt at ${robotsUrl}`);
+
+    const robotsContent = await fetchUrlWithTimeout(robotsUrl, fetchTimeout);
+    if (robotsContent) {
+      // Extract sitemap URLs from robots.txt
+      const sitemapMatches = robotsContent.match(/^Sitemap:\s*(.*?)$/gmi);
+      if (sitemapMatches) {
+        for (const match of sitemapMatches) {
+          const sitemapUrl = match.replace(/^Sitemap:\s*/i, '').trim();
+          if (sitemapUrl && !allSitemapUrls.includes(sitemapUrl)) {
+            allSitemapUrls.push(sitemapUrl);
+
+            // Process this sitemap to extract URLs
+            if (new Date().getTime() <= maxTime) {
+              const urls = await processSitemap(sitemapUrl, maxTime, fetchTimeout);
+              if (urls && urls.length > 0) {
+                allSitemapUrls = allSitemapUrls.concat(urls);
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.log(`Error checking robots.txt: ${error.message}`);
+  }
+
+  // If no sitemaps found in robots.txt, check common locations
+  if (allSitemapUrls.length === 0) {
+    for (const path of sitemapLocations) {
+      if (new Date().getTime() > maxTime) {
+        console.log("Time limit reached while checking common sitemap locations");
+        break;
+      }
+
+      if (path === "/robots.txt") continue; // Already checked
+
+      try {
+        const sitemapUrl = `${formattedUrl}${path}`;
+        console.log(`Checking for sitemap at ${sitemapUrl}`);
+
+        const content = await fetchUrlWithTimeout(sitemapUrl, fetchTimeout);
+        if (content && (content.includes('<urlset') || content.includes('<sitemapindex'))) {
+          // Found a valid sitemap
+          allSitemapUrls.push(sitemapUrl);
+
+          // Process this sitemap to extract child sitemaps if it's an index
+          const urls = await processSitemap(sitemapUrl, maxTime, fetchTimeout);
+          if (urls && urls.length > 0) {
+            allSitemapUrls = allSitemapUrls.concat(urls);
+          }
+        }
+      } catch (error) {
+        console.log(`Error checking ${path}: ${error.message}`);
+      }
+    }
+  }
+
+  // If we still have no sitemaps, try a limited homepage crawl as a last resort
+  if (allSitemapUrls.length === 0) {
+    try {
+      if (new Date().getTime() <= maxTime) {
+        console.log(`No sitemaps found, attempting limited homepage crawl for ${formattedUrl}`);
+        const homepageLinks = await crawlHomepageForSitemaps(formattedUrl, maxTime, fetchTimeout);
+        allSitemapUrls = allSitemapUrls.concat(homepageLinks);
+      }
+    } catch (error) {
+      console.log(`Error during homepage crawl: ${error.message}`);
+    }
+  }
+
+  // Return unique URLs, limited to the maximum number specified
+  return getUniqueUrls(allSitemapUrls).slice(0, maxSitemapUrls);
+}
+
+async function processSitemap(sitemapUrl, maxTime, fetchTimeout) {
+  if (new Date().getTime() > maxTime) {
+    return [];
+  }
+
+  try {
+    console.log(`Processing sitemap: ${sitemapUrl}`);
+    const content = await fetchUrlWithTimeout(sitemapUrl, fetchTimeout);
+    if (!content) return [];
+
+    const urls = [];
+
+    // Check if it's a sitemap index
+    if (content.includes('<sitemapindex')) {
+      // Extract child sitemap URLs
+      const locMatches = content.match(/<loc>(https?:\/\/.*?)<\/loc>/gi);
+      if (locMatches) {
+        // Process only a limited number of child sitemaps to save time
+        const childLimit = Math.min(locMatches.length, 3);
+        for (let i = 0; i < childLimit; i++) {
+          if (new Date().getTime() > maxTime) break;
+
+          const childUrl = locMatches[i].replace(/<loc>(.*?)<\/loc>/i, '$1');
+          if (childUrl && !urls.includes(childUrl)) {
+            urls.push(childUrl);
+
+            // Recursively process child sitemaps, but only one level deep to avoid infinite loops
+            if (!sitemapUrl.includes(childUrl)) {
+              const childUrls = await processSitemap(childUrl, maxTime, fetchTimeout);
+              if (childUrls && childUrls.length > 0) {
+                urls.push(...childUrls);
+              }
+            }
+          }
+        }
+      }
+    } else if (content.includes('<urlset')) {
+      // Regular sitemap - extract page URLs
+      const locMatches = content.match(/<loc>(https?:\/\/.*?)<\/loc>/gi);
+      if (locMatches) {
+        for (const match of locMatches) {
+          const pageUrl = match.replace(/<loc>(.*?)<\/loc>/i, '$1');
+          if (pageUrl && !urls.includes(pageUrl)) {
+            urls.push(pageUrl);
+
+            // Limit number of URLs to avoid processing too many
+            if (urls.length >= 100) { // Use a reasonable limit
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    return urls;
+  } catch (error) {
+    console.log(`Error processing sitemap ${sitemapUrl}: ${error.message}`);
+    return [];
+  }
+}
+
+async function crawlHomepageForSitemaps(websiteUrl, maxTime, fetchTimeout) {
+  if (new Date().getTime() > maxTime) {
+    return [];
+  }
+
+  try {
+    const content = await fetchUrlWithTimeout(websiteUrl, fetchTimeout);
+    if (!content) return [];
+
+    const urls = [];
+
+    // Look for links containing "sitemap" in URL or text
+    const linkRegex = /<a\s+(?:[^>]*?\s+)?href=(["'])(.*?)\1(?:\s+[^>]*?(?:\s+alt=(["'])(.*?)\3|\s+title=(["'])(.*?)\5)?)?[^>]*>([^<]*)<\/a>/gi;
+    let match;
+
+    while ((match = linkRegex.exec(content)) !== null) {
+      if (new Date().getTime() > maxTime) break;
+
+      const href = match[2];
+      const linkText = match[7];
+
+      // Check if link or text contains "sitemap"
+      if ((href && href.toLowerCase().includes('sitemap')) ||
+          (linkText && linkText.toLowerCase().includes('sitemap'))) {
+
+        // Convert relative URLs to absolute
+        let fullUrl = href;
+        if (!href.startsWith('http')) {
+          if (href.startsWith('/')) {
+            fullUrl = websiteUrl + href;
+          } else {
+            fullUrl = websiteUrl + '/' + href;
+          }
+        }
+
+        if (!urls.includes(fullUrl)) {
+          urls.push(fullUrl);
+        }
+      }
+    }
+
+    return urls;
+  } catch (error) {
+    console.log(`Error crawling homepage: ${error.message}`);
+    return [];
+  }
+}
+
+function formatWebsiteUrl(url) {
+  if (!url) return "";
+
+  url = url.trim();
+
+  // Remove trailing slash
+  if (url.endsWith('/')) {
+    url = url.slice(0, -1);
+  }
+
+  // Ensure URL has protocol
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = 'https://' + url;
+  }
+
+  // Remove paths and query parameters
+  try {
+    const urlObj = new URL(url);
+    return `${urlObj.protocol}//${urlObj.hostname}`;
+  } catch (e) {
+    // If URL parsing fails, do basic cleanup
+    return url.split('/').slice(0, 3).join('/');
+  }
+}
+
+async function fetchUrlWithTimeout(url, timeout) {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      },
+      signal: controller.signal,
+      timeout: timeout
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.status === 200) {
+      return response.data;
+    }
+
+    console.log(`Fetch failed for ${url}: HTTP ${response.status}`);
+    return "";
+  } catch (error) {
+    console.error(`Error fetching ${url}:`, error.message);
+    return "";
+  }
+}
+
+function getUniqueUrls(urls) {
+  return [...new Set(urls)];
+}
 
 // Coresignal Search API proxy - FIXED with exact endpoint matching
 app.post('/api/coresignal/search', async (req, res) => {

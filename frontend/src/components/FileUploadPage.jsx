@@ -180,7 +180,10 @@ const FileUploadPage = () => {
                 // Add advisor info to the data
                 const enrichedData = normalizedData.map(row => ({
                     ...row,
-                    advisorName: advisor || 'Unknown Advisor'
+                    advisorName: advisor || 'Unknown Advisor',
+                    connected_to: advisor || '', // Set connected_to field for Supabase
+                    connected_on: row.connected_on || new Date().toISOString().split('T')[0],
+                    relevanceTag: ''
                 }));
 
                 // Save data to session storage

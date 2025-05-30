@@ -259,7 +259,7 @@ function extractDomain(url) {
   } catch (e) {
     // Fallback to regex if URL parsing fails
     console.log(`URL parsing failed, trying regex approach. Error: ${e.message}`);
-    const domainMatch = url.match(/^(?:https?:\/\/)?(?:[^@\n]+@)?(?:www\.)?([^:\/\n?]+)/i);
+    const domainMatch = url.match(/^(?:https?:\/\/)?(?:[^@\n]+@)?(?:www\.)?([^:/\n?]+)/i);
     if (domainMatch && domainMatch[0]) {
       // Make sure we have a protocol
       const extractedDomain = domainMatch[0].startsWith('http') ? domainMatch[0] : 'https://' + domainMatch[0];
