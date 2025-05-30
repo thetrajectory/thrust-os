@@ -444,18 +444,22 @@ async function processOpenJobs(row, linkedinUrl, orgId, index, apiKey, maxJsonLe
 
       logCallback(`Final open jobs count for ${companyName}: ${openJobs}`);
 
-      // Create JSON string for storage, limit size
-      const rawJson = JSON.stringify(companyData).substring(0, maxJsonLength);
+      // Create full JSON string for Supabase storage
+      const fullJson = JSON.stringify(companyData);
 
-      // Save to Supabase and get result
+      // Create truncated version for CSV export
+      const truncatedJson = fullJson.substring(0, maxJsonLength);
+
+      // Save full JSON to Supabase
       const saveResult = await saveOpenJobsToSupabase(
         orgId,
         companyName,
         companyUrl,
         openJobs,
-        rawJson,
+        fullJson,  // Save complete data to database
         logCallback
       );
+
 
       if (saveResult) {
         logCallback(`Successfully saved open jobs data to Supabase for ${companyName}`);
@@ -470,7 +474,7 @@ async function processOpenJobs(row, linkedinUrl, orgId, index, apiKey, maxJsonLe
         data: {
           jobsSource: 'coresignal',
           total_available_jobs: openJobs,
-          coresignal_raw_json: rawJson
+          coresignal_raw_json: truncatedJson  // Use truncated version for CSV export
         }
       };
 
