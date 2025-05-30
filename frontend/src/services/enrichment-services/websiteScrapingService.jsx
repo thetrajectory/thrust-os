@@ -1,6 +1,7 @@
 // services/enrichment-services/websiteScrapingService.js
 import apiClient from '../../utils/apiClient';
 import supabase from '../supabaseClient';
+import metricsStorageService from '../analytics/MetricsStorageService';
 
 /**
  * Check if data is stale based on updated_at timestamp
@@ -57,18 +58,27 @@ function extractDomain(url) {
 }
 
 /**
- * Scrape website content for company analysis
+ * Scrape website content for company analysis with DIRECT TRACKING
  */
 const websiteScrapingService = {
     async scrapeWebsites(rows, logCallback = () => { }, progressCallback = () => { }) {
         logCallback("Starting Website Scraping for Analysis...");
+
+        // DIRECT TRACKING: Initialize counters
+        let totalCreditsUsed = 0;
+        let totalApiCalls = 0;
+        let totalErrors = 0;
+        let totalSupabaseHits = 0;
 
         const untaggedData = rows.filter(row => !row.relevanceTag);
         logCallback(`Processing ${untaggedData.length} untagged rows out of ${rows.length} total rows.`);
 
         if (untaggedData.length === 0) {
             logCallback("No untagged rows to process for website scraping.");
-            return rows;
+            return {
+                data: rows,
+                analytics: { creditsUsed: 0, apiCalls: 0, errors: 0, supabaseHits: 0 }
+            };
         }
 
         const batchSize = parseInt(import.meta.env.VITE_REACT_APP_SCRAPER_BATCH_SIZE || "5");
@@ -100,8 +110,12 @@ const websiteScrapingService = {
 
                         if (result.source === 'supabase') {
                             supabaseHits++;
+                            totalSupabaseHits++;
                         } else if (result.source === 'scraped') {
                             scrapeSuccesses++;
+                            // DIRECT TRACKING: Count credit for scraping
+                            totalCreditsUsed += 1;
+                            totalApiCalls += 1;
                         }
 
                         logCallback(`Processed website for ${row['organization.name'] || row.company}: ${result.source}`);
@@ -110,6 +124,7 @@ const websiteScrapingService = {
                     .catch(error => {
                         logCallback(`Error scraping website for ${row['organization.name'] || row.company}: ${error.message}`);
                         errorCount++;
+                        totalErrors++;
 
                         processedRows.push({
                             ...row,
@@ -138,9 +153,20 @@ const websiteScrapingService = {
         logCallback(`Website Scraping Complete:`);
         logCallback(`- Retrieved from Supabase: ${supabaseHits}`);
         logCallback(`- Successfully scraped: ${scrapeSuccesses}`);
+        logCallback(`- Total credits used: ${totalCreditsUsed}`);
+        logCallback(`- Total API calls: ${totalApiCalls}`);
         logCallback(`- Errors: ${errorCount}`);
 
-        return finalData;
+        return {
+            data: finalData,
+            analytics: {
+                creditsUsed: totalCreditsUsed,
+                apiCalls: totalApiCalls,
+                errors: totalErrors,
+                supabaseHits: totalSupabaseHits,
+                processedCount: scrapeSuccesses
+            }
+        };
     },
 
     async scrapeSingleWebsite(row, maxWebsiteLength, logCallback) {
@@ -182,6 +208,9 @@ const websiteScrapingService = {
 
                 if (cached && !isDataStale(cached.updated_at, cached.created_at) && cached.raw_homepage) {
                     logCallback(`Using cached content for ${domain}`);
+                    // DIRECT TRACKING: Count Supabase hit for website
+                    metricsStorageService.addSupabaseHit('apolloEnrichment_website');
+                    
                     return {
                         source: 'supabase',
                         data: {
@@ -194,6 +223,11 @@ const websiteScrapingService = {
 
             // Scrape using Serper API
             logCallback(`Scraping ${domain} using Serper API...`);
+            
+            // DIRECT TRACKING: Count credit and API call for website scraping
+            metricsStorageService.addCredits('apolloEnrichment_website', 1);
+            metricsStorageService.addApiCall('apolloEnrichment_website');
+            
             const response = await apiClient.serper.scrapeWebsite(domain);
 
             let scrapedText = '';
@@ -254,6 +288,8 @@ const websiteScrapingService = {
             };
 
         } catch (error) {
+            // DIRECT TRACKING: Count error
+            metricsStorageService.addError('apolloEnrichment_website');
             throw new Error(`Failed to scrape website: ${error.message}`);
         }
     },

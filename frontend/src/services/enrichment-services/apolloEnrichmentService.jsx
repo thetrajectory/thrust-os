@@ -1,6 +1,6 @@
 // services/enrichment-services/apolloEnrichmentService.js
 import apiClient from '../../utils/apiClient';
-import customEngineFileStorageService from '../custom-engine/customEngineFileStorageService';
+import metricsStorageService from '../analytics/MetricsStorageService';
 import supabase from '../supabaseClient';
 import linkedinExperienceAnalysisService from './linkedinExperienceAnalysisService';
 import sitemapAnalysisService from './sitemapAnalysisService';
@@ -9,12 +9,8 @@ import websiteScrapingService from './websiteScrapingService';
 
 /**
  * Check if data is stale based on updated_at timestamp
- * @param {string} updatedAt - ISO date string of when data was last updated
- * @param {string} createdAt - ISO date string of when data was created
- * @returns {boolean} - True if data is stale
  */
 function isDataStale(updatedAt, createdAt) {
-    // First try to use updated_at
     if (updatedAt) {
         const lastUpdate = new Date(updatedAt);
         const staleDate = new Date();
@@ -23,7 +19,6 @@ function isDataStale(updatedAt, createdAt) {
         return lastUpdate < staleDate;
     }
 
-    // Fall back to created_at if updated_at is missing
     if (createdAt) {
         const createDate = new Date(createdAt);
         const staleDate = new Date();
@@ -32,127 +27,200 @@ function isDataStale(updatedAt, createdAt) {
         return createDate < staleDate;
     }
 
-    // If both are missing, consider it stale
     return true;
 }
 
 /**
- * Generalized Apollo Enrichment Service
- * Optimized for processing with Supabase caching and file storage
+ * Generalized Apollo Enrichment Service with DIRECT TRACKING
  */
 const apolloEnrichmentService = {
     /**
      * Process data with Apollo enrichment
-     * @param {Array} rows - Array of data rows to process
-     * @param {Object} config - Configuration object
-     * @param {Function} logCallback - Optional callback for logging
-     * @param {Function} progressCallback - Optional callback for progress updates
-     * @returns {Promise<Array>} - Processed rows with enrichment data
      */
     async processData(rows, config = {}, logCallback = () => { }, progressCallback = () => { }) {
         logCallback("Starting Apollo Lead Enrichment...");
 
         const startTimestamp = Date.now();
 
-        // Filter data to only process untagged rows from previous steps
+        // DIRECT TRACKING: Initialize metrics - FIXED SCOPE
+        let totalTokensUsed = 0;
+        let totalCreditsUsed = 0;
+        let totalApiCalls = 0;
+        let totalSupabaseHits = 0;
+
+        // Apollo substep tracking
+        let websiteTokens = 0;
+        let websiteCredits = 0;
+        let experienceTokens = 0;
+        let sitemapTokens = 0;
+
         const untaggedData = rows.filter(row => !row.relevanceTag);
         logCallback(`Processing ${untaggedData.length} untagged rows out of ${rows.length} total rows.`);
 
-        // Safety check - if no untagged rows, return original data
         if (untaggedData.length === 0) {
             logCallback("No untagged rows to process in Apollo enrichment. Returning original data.");
-            return rows;
+            return {
+                data: rows,
+                analytics: { tokensUsed: 0, creditsUsed: 0, supabaseHits: 0, apiCalls: 0 }
+            };
         }
 
-        // Get configuration from environment
         const apiKey = import.meta.env.VITE_REACT_APP_APOLLO_API_KEY;
         const batchSize = parseInt(import.meta.env.VITE_REACT_APP_APOLLO_BATCH_SIZE || "5");
 
         if (!apiKey) {
             logCallback("⚠️ Apollo API key is not set. Using fallback data only.");
-            // Return original data with error markers
-            return rows.map(row => ({
-                ...row,
-                apollo_error: !row.relevanceTag ? 'Apollo API key not configured' : undefined
-            }));
+            return {
+                data: rows.map(row => ({
+                    ...row,
+                    apollo_error: !row.relevanceTag ? 'Apollo API key not configured' : undefined
+                })),
+                analytics: { tokensUsed: 0, creditsUsed: 0, supabaseHits: 0, apiCalls: 0 }
+            };
         }
 
-        // Check for linkedin_url field
         const hasLinkedInUrls = untaggedData.some(row => row.linkedin_url && row.linkedin_url.trim());
         if (!hasLinkedInUrls) {
             logCallback("⚠️ No LinkedIn URLs found in data. Apollo enrichment requires linkedin_url field.");
-            return rows;
+            return {
+                data: rows,
+                analytics: { tokensUsed: 0, creditsUsed: 0, supabaseHits: 0, apiCalls: 0 }
+            };
         }
 
-        // Use file storage for large datasets
         const useFileStorage = rows.length > 1000;
         if (useFileStorage) {
             logCallback('Large dataset detected - using file storage for optimal performance');
         }
 
-        // Check Supabase availability
         const supabaseAvailable = await apolloEnrichmentService.checkSupabaseAvailability(logCallback);
 
-        if (useFileStorage) {
-            // Process using file storage service for large datasets
-            const processFunction = async (chunk) => {
-                return await apolloEnrichmentService.processChunk(
-                    chunk,
-                    apiKey,
-                    config,
-                    supabaseAvailable,
-                    logCallback
-                );
-            };
+        try {
+            let results = [];
+            let supabaseHits = 0;
+            let apolloFetches = 0;
+            let errorCount = 0;
 
-            const progressFunction = (percent, message) => {
-                progressCallback(percent);
-                logCallback(message);
-            };
+            // Process data
+            for (let i = 0; i < untaggedData.length; i += batchSize) {
+                const batch = untaggedData.slice(i, Math.min(i + batchSize, untaggedData.length));
+                logCallback(`Processing batch ${Math.floor(i / batchSize) + 1}: items ${i + 1} to ${i + batch.length}`);
 
-            try {
-                const results = await customEngineFileStorageService.processLargeDataset(
-                    untaggedData,
-                    processFunction,
-                    progressFunction
-                );
+                for (const row of batch) {
+                    try {
+                        if (row.relevanceTag || !row.linkedin_url || !row.linkedin_url.trim()) {
+                            results.push({ ...row });
+                            continue;
+                        }
 
-                // Merge results with original data
-                const mergedResults = apolloEnrichmentService.mergeResults(rows, untaggedData, results);
+                        const result = await apolloEnrichmentService.processSingleLead(
+                            row,
+                            apiKey,
+                            supabaseAvailable,
+                            logCallback
+                        );
 
-                // Handle additional analyses if enabled
-                let finalResults = mergedResults;
-                if (config.options) {
-                    finalResults = await apolloEnrichmentService.processApolloWithOptions(mergedResults, config, logCallback, progressCallback);
+                        // DIRECT TRACKING: Count actual usage
+                        if (result.source === 'supabase') {
+                            supabaseHits++;
+                            totalSupabaseHits++;
+                            metricsStorageService.addSupabaseHit('apolloEnrichment');
+                        } else if (result.source === 'apollo') {
+                            apolloFetches++;
+                            totalApiCalls++;
+                            metricsStorageService.addApiCall('apolloEnrichment');
+                        }
+
+                        results.push(result.data);
+
+                    } catch (error) {
+                        errorCount++;
+                        metricsStorageService.addError('apolloEnrichment');
+                        logCallback(`Error processing lead: ${error.message}`);
+                        results.push({
+                            ...row,
+                            apolloLeadSource: 'error',
+                            apollo_error: error.message
+                        });
+                    }
                 }
 
-                const endTimestamp = Date.now();
-                const processingTimeSeconds = (endTimestamp - startTimestamp) / 1000;
+                const progress = Math.floor(((i + batch.length) / untaggedData.length) * 50);
+                progressCallback(progress);
 
-                logCallback(`Apollo Enrichment Complete:`);
-                logCallback(`- Total processed: ${results.length}`);
-                logCallback(`- Processing time: ${processingTimeSeconds.toFixed(2)} seconds`);
-
-                return finalResults;
-
-            } catch (error) {
-                logCallback(`Error in large dataset processing: ${error.message}`);
-                throw error;
+                if (i + batch.length < untaggedData.length) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
             }
-        } else {
-            // Process smaller datasets normally
-            const finalResults = await apolloEnrichmentService.processStandardDataset(
-                rows,
-                untaggedData,
-                apiKey,
-                config,
-                supabaseAvailable,
-                batchSize,
-                logCallback,
-                progressCallback
+
+            // Merge results with original data
+            let mergedResults = apolloEnrichmentService.mergeResults(rows, untaggedData, results);
+
+            // Handle additional analyses if enabled - WITH DIRECT TRACKING
+            if (config.options) {
+                logCallback('Processing Apollo additional analyses...');
+
+                const analysisResult = await apolloEnrichmentService.processApolloWithOptions(
+                    mergedResults,
+                    config,
+                    logCallback,
+                    progressCallback
+                );
+
+                mergedResults = analysisResult.data;
+
+                // DIRECT TRACKING: Add analysis metrics
+                totalTokensUsed += analysisResult.tokensUsed || 0;
+                totalCreditsUsed += analysisResult.creditsUsed || 0;
+                websiteTokens = analysisResult.websiteTokens || 0;
+                websiteCredits = analysisResult.websiteCredits || 0;
+                experienceTokens = analysisResult.experienceTokens || 0;
+                sitemapTokens = analysisResult.sitemapTokens || 0;
+            }
+
+            // DIRECT TRACKING: Update main Apollo metrics
+            metricsStorageService.updateStepCounts(
+                'apolloEnrichment',
+                untaggedData.length,
+                results.length - errorCount,
+                errorCount,
+                Date.now() - startTimestamp
             );
 
-            return finalResults;
+            // DIRECT TRACKING: Create Apollo substeps with actual metrics
+            if (config.options) {
+                // Use ACTUAL metrics collected from independent processes
+                metricsStorageService.createApolloSubsteps(config.options, 'apolloEnrichment', {
+                    websiteTokens,      // ACTUAL tokens from website analysis
+                    websiteCredits,     // ACTUAL credits from website scraping  
+                    experienceTokens,   // ACTUAL tokens from experience analysis
+                    sitemapTokens       // ACTUAL tokens from sitemap analysis
+                });
+            }
+
+            logCallback(`Apollo Enrichment Complete:`);
+            logCallback(`- Retrieved from Supabase: ${supabaseHits}`);
+            logCallback(`- Fetched from Apollo API: ${apolloFetches}`);
+            logCallback(`- Total Tokens Used: ${totalTokensUsed}`);
+            logCallback(`- Total Credits Used: ${totalCreditsUsed}`);
+            logCallback(`- Errors: ${errorCount}`);
+
+            return {
+                data: mergedResults,
+                analytics: {
+                    tokensUsed: totalTokensUsed,
+                    creditsUsed: totalCreditsUsed,
+                    supabaseHits: totalSupabaseHits,
+                    apiCalls: totalApiCalls,
+                    processedCount: results.length,
+                    processingTime: Date.now() - startTimestamp
+                }
+            };
+
+        } catch (error) {
+            metricsStorageService.addError('apolloEnrichment');
+            logCallback(`Error in Apollo enrichment: ${error.message}`);
+            throw error;
         }
     },
 
@@ -171,126 +239,6 @@ const apolloEnrichmentService = {
             logCallback(`⚠️ Supabase test query failed: ${e.message}`);
             return false;
         }
-    },
-
-    /**
-     * Process chunk of data
-     */
-    async processChunk(chunk, apiKey, config, supabaseAvailable, logCallback) {
-        const results = [];
-        let supabaseHits = 0;
-        let apolloFetches = 0;
-        let errorCount = 0;
-
-        for (const row of chunk) {
-            try {
-                // Skip if already processed or no LinkedIn URL
-                if (row.relevanceTag || !row.linkedin_url || !row.linkedin_url.trim()) {
-                    results.push({ ...row });
-                    continue;
-                }
-
-                const result = await apolloEnrichmentService.processSingleLead(
-                    row,
-                    apiKey,
-                    supabaseAvailable,
-                    logCallback
-                );
-
-                // Track source
-                if (result.source === 'supabase') {
-                    supabaseHits++;
-                } else if (result.source === 'apollo') {
-                    apolloFetches++;
-                }
-
-                results.push(result.data);
-
-            } catch (error) {
-                errorCount++;
-                logCallback(`Error processing lead: ${error.message}`);
-                results.push({
-                    ...row,
-                    apolloLeadSource: 'error',
-                    apollo_error: error.message
-                });
-            }
-        }
-
-        logCallback(`Chunk processed: ${supabaseHits} from cache, ${apolloFetches} from API, ${errorCount} errors`);
-        return results;
-    },
-
-    /**
-     * Process standard datasets (< 1000 rows)
-     */
-    async processStandardDataset(rows, untaggedData, apiKey, config, supabaseAvailable, batchSize, logCallback, progressCallback) {
-        const results = [];
-        let supabaseHits = 0;
-        let apolloFetches = 0;
-        let errorCount = 0;
-
-        for (let i = 0; i < untaggedData.length; i += batchSize) {
-            const batch = untaggedData.slice(i, Math.min(i + batchSize, untaggedData.length));
-            logCallback(`Processing batch ${Math.floor(i / batchSize) + 1}: items ${i + 1} to ${i + batch.length}`);
-
-            for (const row of batch) {
-                try {
-                    if (row.relevanceTag || !row.linkedin_url || !row.linkedin_url.trim()) {
-                        results.push({ ...row });
-                        continue;
-                    }
-
-                    const result = await apolloEnrichmentService.processSingleLead(
-                        row,
-                        apiKey,
-                        supabaseAvailable,
-                        logCallback
-                    );
-
-                    if (result.source === 'supabase') {
-                        supabaseHits++;
-                    } else if (result.source === 'apollo') {
-                        apolloFetches++;
-                    }
-
-                    results.push(result.data);
-
-                } catch (error) {
-                    errorCount++;
-                    logCallback(`Error processing lead: ${error.message}`);
-                    results.push({
-                        ...row,
-                        apolloLeadSource: 'error',
-                        apollo_error: error.message
-                    });
-                }
-            }
-
-            // Update progress
-            const progress = Math.floor(((i + batch.length) / untaggedData.length) * 50); // 50% for Apollo enrichment
-            progressCallback(progress);
-
-            // Add delay between batches to respect rate limits
-            if (i + batch.length < untaggedData.length) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-        }
-
-        // Merge results with original data
-        let mergedResults = apolloEnrichmentService.mergeResults(rows, untaggedData, results);
-
-        // Handle additional analyses if enabled
-        if (config.options) {
-            mergedResults = await apolloEnrichmentService.processApolloWithOptions(mergedResults, config, logCallback, progressCallback);
-        }
-
-        logCallback(`Apollo Enrichment Complete:`);
-        logCallback(`- Retrieved from Supabase: ${supabaseHits}`);
-        logCallback(`- Fetched from Apollo API: ${apolloFetches}`);
-        logCallback(`- Errors: ${errorCount}`);
-
-        return mergedResults;
     },
 
     /**
@@ -366,7 +314,6 @@ const apolloEnrichmentService = {
                 return null;
             }
 
-            // Check if data is stale
             if (isDataStale(cachedRows.updated_at, cachedRows.created_at)) {
                 logCallback(`Data in Supabase is stale for ${linkedinUrl}. Will fetch fresh data.`);
                 return null;
@@ -374,7 +321,6 @@ const apolloEnrichmentService = {
 
             logCallback(`Using fresh data from Supabase for ${linkedinUrl}`);
 
-            // Process apollo_json field
             let apolloData = {};
             if (typeof cachedRows.apollo_json === 'object' && cachedRows.apollo_json !== null) {
                 apolloData = cachedRows.apollo_json;
@@ -400,7 +346,6 @@ const apolloEnrichmentService = {
 
     /**
      * Fetch data from Apollo API with retry logic
-     * FIXED: Using the correct apiClient.apollo.matchPerson method
      */
     async fetchFromApollo(linkedinUrl, apiKey) {
         const maxRetries = 3;
@@ -408,7 +353,6 @@ const apolloEnrichmentService = {
 
         while (retryCount <= maxRetries) {
             try {
-                // Prepare the request data - this is the key fix!
                 const requestData = {
                     api_key: apiKey,
                     linkedin_url: linkedinUrl,
@@ -418,7 +362,6 @@ const apolloEnrichmentService = {
 
                 console.log('Apollo API request data:', requestData);
 
-                // Use the existing apiClient.apollo.matchPerson method
                 const response = await apiClient.apollo.matchPerson(requestData);
 
                 console.log('Apollo API response received:', response);
@@ -427,7 +370,6 @@ const apolloEnrichmentService = {
                     throw new Error('No person data in Apollo response');
                 }
 
-                // Return the expected format
                 return {
                     person: response.person,
                     organization: response.person.organization
@@ -438,11 +380,10 @@ const apolloEnrichmentService = {
                 console.error(`Apollo API attempt ${retryCount} failed:`, apiError.message);
 
                 if (retryCount <= maxRetries) {
-                    const delay = retryCount * 3000; // 3s, 6s, 9s
+                    const delay = retryCount * 3000;
                     console.log(`Retrying in ${delay}ms...`);
                     await new Promise(resolve => setTimeout(resolve, delay));
                 } else {
-                    // Log the final error details
                     console.error('Final Apollo API error:', {
                         message: apiError.message,
                         linkedinUrl: linkedinUrl,
@@ -468,9 +409,7 @@ const apolloEnrichmentService = {
 
             let isoConnectedOn = connectedOn;
             if (connectedOn && typeof connectedOn === 'string') {
-                // Try to parse the date and convert to ISO format
                 try {
-                    // Handle format like "27-04-2025"
                     const match = connectedOn.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
                     if (match) {
                         const day = match[1].padStart(2, '0');
@@ -478,7 +417,6 @@ const apolloEnrichmentService = {
                         const year = match[3];
                         isoConnectedOn = `${year}-${month}-${day}`;
                     } else if (!connectedOn.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                        // If not already in ISO format, use current date as fallback
                         isoConnectedOn = new Date().toISOString().split('T')[0];
                     }
                 } catch (e) {
@@ -487,8 +425,6 @@ const apolloEnrichmentService = {
                 }
             }
 
-
-            // Check if record exists
             const { data: existingRecord, error: fetchError } = await supabase
                 .from('leads_db')
                 .select('apollo_person_id')
@@ -500,7 +436,6 @@ const apolloEnrichmentService = {
             }
 
             if (existingRecord) {
-                // Update existing record
                 const { error: updateError } = await supabase
                     .from('leads_db')
                     .update({
@@ -513,7 +448,6 @@ const apolloEnrichmentService = {
 
                 if (updateError) throw new Error(`Supabase update error: ${updateError.message}`);
             } else {
-                // Insert new record
                 const { error: insertError } = await supabase
                     .from('leads_db')
                     .insert({
@@ -531,7 +465,6 @@ const apolloEnrichmentService = {
             }
 
         } catch (error) {
-            // Don't throw, just log the error
             console.error(`Failed to save to Supabase: ${error.message}`);
         }
     },
@@ -627,7 +560,6 @@ const apolloEnrichmentService = {
      * Merge processed results with original data
      */
     mergeResults(originalRows, processedRows, results) {
-        // Create a map of processed results
         const processedMap = new Map();
         results.forEach((result, index) => {
             const originalRow = processedRows[index];
@@ -635,14 +567,11 @@ const apolloEnrichmentService = {
             processedMap.set(key, result);
         });
 
-        // Merge back into original data
         return originalRows.map(originalRow => {
-            // If row was tagged, keep original
             if (originalRow.relevanceTag) {
                 return originalRow;
             }
 
-            // Find processed result
             const key = originalRow.linkedin_url || originalRow.id;
             if (key && processedMap.has(key)) {
                 return processedMap.get(key);
@@ -653,97 +582,143 @@ const apolloEnrichmentService = {
     },
 
     /**
-     * Process Apollo with additional options (website analysis, experience analysis, etc.)
-     */
+ * Process Apollo with additional options - WITH PROPER TRACKING
+ */
     async processApolloWithOptions(rows, config, logCallback, progressCallback) {
         if (!config.options) {
-            return rows;
+            return {
+                data: rows,
+                tokensUsed: 0,
+                creditsUsed: 0,
+                websiteTokens: 0,
+                websiteCredits: 0,
+                experienceTokens: 0,
+                sitemapTokens: 0
+            };
         }
-    
+
         const { analyzeWebsite, analyzeExperience, analyzeSitemap } = config.options;
         const prompts = config.prompts || {};
         let result = rows;
-    
+
+        // DIRECT TRACKING: Track actual usage from each independent process
+        let totalTokensUsed = 0;
+        let totalCreditsUsed = 0;
+        let websiteTokens = 0;
+        let websiteCredits = 0;
+        let experienceTokens = 0;
+        let sitemapTokens = 0;
+
         if (analyzeWebsite && prompts.websitePrompt) {
             logCallback('🌐 Starting Website Analysis substep...');
-    
-            // Step 1: Scrape websites first
-            result = await websiteScrapingService.scrapeWebsites(
+
+            // Step 1: Scrape websites first - INDEPENDENT PROCESS
+            const scrapingResult = await websiteScrapingService.scrapeWebsites(
                 result,
                 (message) => {
-                    logCallback(`🌐 Website Analysis: ${message}`);
-                    // Log actual Serper credits when used
-                    if (message.includes('scraping')) {
-                        logCallback('🌐 Website Analysis: 1 credit used for Serper website scraping');
-                    }
+                    logCallback(`🌐 Website Scraping: ${message}`);
                 },
                 (progress) => {
                     if (progressCallback) {
-                        progressCallback(50 + (progress * 0.2));
+                        progressCallback(50 + (progress * 0.15));
                     }
                 }
             );
-    
-            // Step 2: Analyze website content
-            result = await websiteAnalysisService.analyzeWebsites(
+
+            result = scrapingResult.data || result;
+
+            // COLLECT ACTUAL METRICS from scraping
+            const scrapingAnalytics = scrapingResult.analytics || {};
+            websiteCredits += scrapingAnalytics.creditsUsed || 0;
+            totalCreditsUsed += scrapingAnalytics.creditsUsed || 0;
+
+            logCallback(`🌐 Website Scraping completed - ${scrapingAnalytics.creditsUsed || 0} credits used`);
+
+            // Step 2: Analyze website content - INDEPENDENT PROCESS
+            const analysisResult = await websiteAnalysisService.analyzeWebsites(
                 result,
                 prompts.websitePrompt,
                 (message) => {
                     logCallback(`🌐 Website Analysis: ${message}`);
-                    // Track actual OpenAI token usage
-                    if (message.includes('tokens')) {
-                        logCallback(`🌐 Website Analysis: ${message}`);
-                    }
                 },
                 (progress) => {
                     if (progressCallback) {
-                        progressCallback(70 + (progress * 0.2));
+                        progressCallback(65 + (progress * 0.15));
                     }
                 }
             );
-            
+
+            result = analysisResult.data || result;
+
+            // COLLECT ACTUAL METRICS from analysis
+            const analysisAnalytics = analysisResult.analytics || {};
+            websiteTokens += analysisAnalytics.tokensUsed || 0;
+            totalTokensUsed += analysisAnalytics.tokensUsed || 0;
+
+            logCallback(`🌐 Website Analysis completed - ${analysisAnalytics.tokensUsed || 0} tokens used`);
             logCallback('✅ Website Analysis substep completed');
         }
-    
+
         if (analyzeExperience && prompts.experiencePrompt) {
             logCallback('👔 Starting Employee History Analysis substep...');
-            
-            result = await linkedinExperienceAnalysisService.processData(
-                result, 
-                prompts.experiencePrompt, 
+
+            // INDEPENDENT PROCESS - LinkedIn Experience Analysis
+            const experienceResult = await linkedinExperienceAnalysisService.processData(
+                result,
+                prompts.experiencePrompt,
                 (message) => {
                     logCallback(`👔 Employee History Analysis: ${message}`);
-                    // Track actual token usage for experience analysis
-                    if (message.includes('tokens')) {
-                        logCallback(`👔 Employee History Analysis: ${message}`);
-                    }
                 }
             );
-            
+
+            result = experienceResult.data || result;
+
+            // COLLECT ACTUAL METRICS from experience analysis
+            const experienceAnalytics = experienceResult.analytics || {};
+            experienceTokens += experienceAnalytics.tokensUsed || 0;
+            totalTokensUsed += experienceAnalytics.tokensUsed || 0;
+
+            logCallback(`👔 Employee History Analysis completed - ${experienceAnalytics.tokensUsed || 0} tokens used`);
             logCallback('✅ Employee History Analysis substep completed');
         }
-    
+
         if (analyzeSitemap && prompts.sitemapPrompt) {
             logCallback('🗺️ Starting Sitemaps Scraping substep...');
-            
-            result = await sitemapAnalysisService.processData(
-                rows, 
-                prompts.sitemapPrompt, 
+
+            // INDEPENDENT PROCESS - Sitemap Analysis
+            const sitemapResult = await sitemapAnalysisService.processData(
+                result,
+                prompts.sitemapPrompt,
                 (message) => {
                     logCallback(`🗺️ Sitemaps Scraping: ${message}`);
-                    // Track actual token usage (no credits - manual fetch)
-                    if (message.includes('tokens')) {
-                        logCallback(`🗺️ Sitemaps Scraping: ${message}`);
-                    }
                 }
             );
-            
+
+            result = sitemapResult.data || result;
+
+            // COLLECT ACTUAL METRICS from sitemap analysis
+            const sitemapAnalytics = sitemapResult.analytics || {};
+            sitemapTokens += sitemapAnalytics.tokensUsed || 0;
+            totalTokensUsed += sitemapAnalytics.tokensUsed || 0;
+
+            logCallback(`🗺️ Sitemaps Scraping completed - ${sitemapAnalytics.tokensUsed || 0} tokens used`);
             logCallback('✅ Sitemaps Scraping substep completed');
         }
-    
-        return result;
-    },
 
+        // Log final metrics collection
+        logCallback(`📊 Apollo substeps completed - Total tokens: ${totalTokensUsed}, Total credits: ${totalCreditsUsed}`);
+        logCallback(`📊 Breakdown - Website: ${websiteTokens}T/${websiteCredits}C, Experience: ${experienceTokens}T, Sitemap: ${sitemapTokens}T`);
+
+        return {
+            data: result,
+            tokensUsed: totalTokensUsed,
+            creditsUsed: totalCreditsUsed,
+            websiteTokens,
+            websiteCredits,
+            experienceTokens,
+            sitemapTokens
+        };
+    },
 
     /**
      * Process with configuration (for compatibility with existing engine builder)

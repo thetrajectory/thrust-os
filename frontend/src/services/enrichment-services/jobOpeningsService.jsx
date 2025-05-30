@@ -1,7 +1,8 @@
 // services/enrichment-services/jobOpeningsService.js
 import apiClient from '../../utils/apiClient';
-import supabase from '../supabaseClient';
+import metricsStorageService from '../analytics/MetricsStorageService';
 import customEngineFileStorageService from '../custom-engine/customEngineFileStorageService';
+import supabase from '../supabaseClient';
 
 /**
  * Check if data is stale based on updated_at timestamp
@@ -97,7 +98,6 @@ async function checkSupabaseCache(orgId, logCallback) {
             return null;
         }
 
-        // Validate that we have usable JSON data
         if (cachedRows.coresignal_json) {
             const testParse = safeJsonParse(cachedRows.coresignal_json);
             if (!testParse || Object.keys(testParse).length === 0) {
@@ -144,7 +144,6 @@ function extractJobsCount(companyData) {
         openJobs = Number(companyData.job_posting_count) || 0;
     }
     else {
-        // Try to find any field that might contain job counts
         for (const key in companyData) {
             if (key.toLowerCase().includes('job') && key.toLowerCase().includes('count')) {
                 openJobs = Number(companyData[key]) || 0;
@@ -157,7 +156,7 @@ function extractJobsCount(companyData) {
 }
 
 /**
- * Fetch data from Coresignal API
+ * Fetch data from Coresignal API - WITH DIRECT TRACKING
  */
 async function fetchFromCoresignal(linkedinUrl, apiKey) {
     const maxRetries = 3;
@@ -165,7 +164,9 @@ async function fetchFromCoresignal(linkedinUrl, apiKey) {
 
     while (retryCount <= maxRetries) {
         try {
-            // Step 1: Search API call
+            // DIRECT TRACKING: Count API calls
+            metricsStorageService.addApiCall('jobOpenings');
+
             const searchQuery = {
                 query: {
                     bool: {
@@ -189,40 +190,35 @@ async function fetchFromCoresignal(linkedinUrl, apiKey) {
 
             const responseCode = searchRes[0];
 
-            // Step 2: Collect API call
+            // DIRECT TRACKING: Count second API call
+            metricsStorageService.addApiCall('jobOpenings');
+
             const collectRes = await apiClient.coresignal.collectCompanyData(responseCode);
 
             if (!collectRes || collectRes.error) {
                 throw new Error(collectRes?.error || 'No company data in collect response');
             }
 
-            // Step 3: Extract jobs count
             const openJobs = extractJobsCount(collectRes);
-            
-            // Step 4: Create JSON string with size validation
+
             const maxJsonLength = parseInt(import.meta.env.VITE_REACT_APP_MAX_JSON_LENGTH || "49999");
             let coresignalJson;
-            
+
             try {
                 const fullJsonString = JSON.stringify(collectRes);
                 if (fullJsonString.length > maxJsonLength) {
-                    // If too long, truncate but ensure it's still valid JSON
                     const truncatedString = fullJsonString.substring(0, maxJsonLength - 1);
-                    // Find the last complete property to avoid broken JSON
                     const lastCommaIndex = truncatedString.lastIndexOf(',');
                     const lastBraceIndex = truncatedString.lastIndexOf('}');
-                    
+
                     if (lastCommaIndex > lastBraceIndex) {
-                        // Remove incomplete property
                         coresignalJson = truncatedString.substring(0, lastCommaIndex) + '}';
                     } else {
                         coresignalJson = truncatedString + '}';
                     }
-                    
-                    // Validate the truncated JSON
+
                     const testParse = safeJsonParse(coresignalJson);
                     if (!testParse || Object.keys(testParse).length === 0) {
-                        // If truncation failed, create minimal valid JSON
                         coresignalJson = JSON.stringify({
                             active_job_postings_count: openJobs,
                             data_truncated: true,
@@ -234,7 +230,6 @@ async function fetchFromCoresignal(linkedinUrl, apiKey) {
                 }
             } catch (stringifyError) {
                 console.error('Error stringifying Coresignal data:', stringifyError);
-                // Create minimal fallback JSON
                 coresignalJson = JSON.stringify({
                     active_job_postings_count: openJobs,
                     error: 'Failed to serialize data',
@@ -256,6 +251,8 @@ async function fetchFromCoresignal(linkedinUrl, apiKey) {
                 console.log(`Retrying in ${delay}ms...`);
                 await new Promise(resolve => setTimeout(resolve, delay));
             } else {
+                // DIRECT TRACKING: Count error
+                metricsStorageService.addError('jobOpenings');
                 throw apiError;
             }
         }
@@ -263,62 +260,63 @@ async function fetchFromCoresignal(linkedinUrl, apiKey) {
 }
 
 /**
- * Analyze jobs data with AI - Enhanced with better error handling
+ * Analyze jobs data with AI - Enhanced with DIRECT TRACKING
  */
 async function analyzeJobsData(coresignalJson, prompt, companyName) {
     try {
         const model = import.meta.env.VITE_REACT_APP_TITLE_RELEVANCE_MODEL || 'gpt-4o-mini';
-        
-        // Parse the JSON to get available fields with enhanced error handling
+
         let jobsData = {};
         let parseSuccess = false;
-        
+
         if (coresignalJson) {
             jobsData = safeJsonParse(coresignalJson, {});
             parseSuccess = Object.keys(jobsData).length > 0;
-            
+
             if (!parseSuccess) {
                 console.warn(`Failed to parse Coresignal JSON for ${companyName}`);
-                return { 
+                return {
                     job_insights: 'Unable to analyze jobs data due to corrupted JSON',
                     job_analysis_error: 'JSON parsing failed',
-                    job_analysis_timestamp: new Date().toISOString()
+                    job_analysis_timestamp: new Date().toISOString(),
+                    tokensUsed: 0
                 };
             }
         } else {
             console.warn(`No Coresignal JSON data available for ${companyName}`);
-            return { 
+            return {
                 job_insights: 'No jobs data available for analysis',
-                job_analysis_timestamp: new Date().toISOString()
+                job_analysis_timestamp: new Date().toISOString(),
+                tokensUsed: 0
             };
         }
 
-        // Extract job count safely
         const jobCount = extractJobsCount(jobsData);
-        
-        // Replace placeholders in prompt
+
         let processedPrompt = prompt;
         const placeholders = {
             '<company>': companyName || 'Unknown Company',
             '<company_name>': companyName || 'Unknown Company',
             '<jobs_data>': JSON.stringify(jobsData, null, 2),
             '<open_jobs_count>': String(jobCount),
-            '<active_job_postings_titles>': Array.isArray(jobsData.active_job_postings_titles) 
-                ? jobsData.active_job_postings_titles.join(', ') 
+            '<active_job_postings_titles>': Array.isArray(jobsData.active_job_postings_titles)
+                ? jobsData.active_job_postings_titles.join(', ')
                 : 'No job titles available',
-            '<hiring_trends>': jobsData.active_job_postings_count_change 
-                ? JSON.stringify(jobsData.active_job_postings_count_change) 
+            '<hiring_trends>': jobsData.active_job_postings_count_change
+                ? JSON.stringify(jobsData.active_job_postings_count_change)
                 : 'No hiring trend data available'
         };
 
         Object.entries(placeholders).forEach(([placeholder, value]) => {
             processedPrompt = processedPrompt.replace(
-                new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), 
+                new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
                 String(value)
             );
         });
 
-        // Call OpenAI API
+        // DIRECT TRACKING: Count API call and track tokens
+        metricsStorageService.addApiCall('jobOpenings');
+
         const response = await apiClient.openai.chatCompletion({
             model: model,
             messages: [
@@ -336,35 +334,46 @@ async function analyzeJobsData(coresignalJson, prompt, companyName) {
         });
 
         let analysis = '';
+        let tokensUsed = 0;
+
         if (response?.choices?.[0]?.message?.content) {
             analysis = response.choices[0].message.content.trim();
+        }
+
+        if (response?.usage?.total_tokens) {
+            tokensUsed = response.usage.total_tokens;
+            // DIRECT TRACKING: Add tokens
+            metricsStorageService.addTokens('jobOpenings', tokensUsed);
         }
 
         return {
             job_insights: analysis || 'No analysis available',
             job_analysis_timestamp: new Date().toISOString(),
-            jobs_data_quality: parseSuccess ? 'good' : 'poor'
+            jobs_data_quality: parseSuccess ? 'good' : 'poor',
+            tokensUsed: tokensUsed
         };
 
     } catch (error) {
         console.error('Error analyzing jobs data:', error);
+        // DIRECT TRACKING: Count error
+        metricsStorageService.addError('jobOpenings');
         return {
             job_insights: 'Analysis failed due to technical error',
             job_analysis_error: error.message,
-            job_analysis_timestamp: new Date().toISOString()
+            job_analysis_timestamp: new Date().toISOString(),
+            tokensUsed: 0
         };
     }
 }
 
 /**
- * Save data to Supabase with enhanced error handling
- */
+* Save data to Supabase with enhanced error handling
+*/
 async function saveToSupabase(orgId, companyName, coresignalResult, originalRow) {
     try {
         const now = new Date().toISOString();
         const companyUrl = originalRow['organization.website_url'] || originalRow.organization?.website_url || '';
 
-        // Validate the JSON before saving
         const testParse = safeJsonParse(coresignalResult.coresignal_json);
         if (!testParse || Object.keys(testParse).length === 0) {
             console.warn(`Attempting to save invalid JSON for org ${orgId}. Creating fallback data.`);
@@ -375,7 +384,6 @@ async function saveToSupabase(orgId, companyName, coresignalResult, originalRow)
             });
         }
 
-        // Check if record exists
         const { data: existingRecord, error: fetchError } = await supabase
             .from('orgs_db')
             .select('apollo_org_id')
@@ -387,7 +395,6 @@ async function saveToSupabase(orgId, companyName, coresignalResult, originalRow)
         }
 
         if (existingRecord) {
-            // Update existing record
             const { error: updateError } = await supabase
                 .from('orgs_db')
                 .update({
@@ -399,7 +406,6 @@ async function saveToSupabase(orgId, companyName, coresignalResult, originalRow)
 
             if (updateError) throw updateError;
         } else {
-            // Insert new record
             const { error: insertError } = await supabase
                 .from('orgs_db')
                 .insert({
@@ -421,8 +427,8 @@ async function saveToSupabase(orgId, companyName, coresignalResult, originalRow)
 }
 
 /**
- * Process a single company
- */
+* Process a single company - WITH DIRECT TRACKING
+*/
 async function processSingleCompany(row, apiKey, config, supabaseAvailable, logCallback) {
     const linkedinUrl = row['organization.linkedin_url'] || row.organization?.linkedin_url;
     const orgId = row['organization.id'] || row.organization?.id;
@@ -433,8 +439,10 @@ async function processSingleCompany(row, apiKey, config, supabaseAvailable, logC
         if (supabaseAvailable) {
             const cachedResult = await checkSupabaseCache(orgId, logCallback);
             if (cachedResult) {
-                // If we have config prompt, analyze the cached data
-                let analysisResult = {};
+                // DIRECT TRACKING: Count Supabase hit
+                metricsStorageService.addSupabaseHit('jobOpenings');
+
+                let analysisResult = { tokensUsed: 0 };
                 if (config.prompt && cachedResult.coresignal_json) {
                     analysisResult = await analyzeJobsData(cachedResult.coresignal_json, config.prompt, companyName);
                 }
@@ -462,7 +470,7 @@ async function processSingleCompany(row, apiKey, config, supabaseAvailable, logC
         }
 
         // Step 4: Analyze data if prompt provided
-        let analysisResult = {};
+        let analysisResult = { tokensUsed: 0 };
         if (config.prompt && coresignalResult.coresignal_json) {
             analysisResult = await analyzeJobsData(coresignalResult.coresignal_json, config.prompt, companyName);
         }
@@ -480,6 +488,8 @@ async function processSingleCompany(row, apiKey, config, supabaseAvailable, logC
 
     } catch (error) {
         logCallback(`Error processing ${companyName}: ${error.message}`);
+        // DIRECT TRACKING: Count error
+        metricsStorageService.addError('jobOpenings');
         return {
             source: 'error',
             data: {
@@ -493,13 +503,14 @@ async function processSingleCompany(row, apiKey, config, supabaseAvailable, logC
 }
 
 /**
- * Process chunk of data
- */
+* Process chunk of data - WITH DIRECT TRACKING
+*/
 async function processChunk(chunk, apiKey, config, supabaseAvailable, logCallback) {
     const results = [];
     let supabaseHits = 0;
     let coresignalFetches = 0;
     let errorCount = 0;
+    let totalTokensUsed = 0;
 
     for (const row of chunk) {
         try {
@@ -522,6 +533,11 @@ async function processChunk(chunk, apiKey, config, supabaseAvailable, logCallbac
                 coresignalFetches++;
             }
 
+            // DIRECT TRACKING: Count tokens from analysis
+            if (result.data.tokensUsed) {
+                totalTokensUsed += result.data.tokensUsed;
+            }
+
             results.push(result.data);
 
         } catch (error) {
@@ -535,13 +551,16 @@ async function processChunk(chunk, apiKey, config, supabaseAvailable, logCallbac
         }
     }
 
-    logCallback(`Chunk processed: ${supabaseHits} from cache, ${coresignalFetches} from API, ${errorCount} errors`);
-    return results;
+    logCallback(`Chunk processed: ${supabaseHits} from cache, ${coresignalFetches} from API, ${errorCount} errors, ${totalTokensUsed} tokens used`);
+    return {
+        data: results,
+        tokensUsed: totalTokensUsed
+    };
 }
 
 /**
- * Merge processed results with original data
- */
+* Merge processed results with original data
+*/
 function mergeResults(originalRows, processedRows, results) {
     const processedMap = new Map();
     results.forEach((result, index) => {
@@ -565,67 +584,81 @@ function mergeResults(originalRows, processedRows, results) {
 }
 
 /**
- * Job Openings Service
- * Fetches open jobs data using Coresignal API and performs AI analysis
- */
+* Job Openings Service with DIRECT TRACKING
+*/
 const jobOpeningsService = {
     /**
      * Process data with job openings analysis
      */
-    async processData(rows, config = {}, logCallback = () => {}, progressCallback = () => {}) {
+    async processData(rows, config = {}, logCallback = () => { }, progressCallback = () => { }) {
         logCallback("Starting Job Openings Analysis...");
 
         const startTimestamp = Date.now();
 
-        // Filter data to only process untagged rows from previous steps
+        // DIRECT TRACKING: Initialize counters
+        let totalTokensUsed = 0;
+        let totalApiCalls = 0;
+        let totalSupabaseHits = 0;
+        let totalErrors = 0;
+
         const untaggedData = rows.filter(row => !row.relevanceTag);
         logCallback(`Processing ${untaggedData.length} untagged rows out of ${rows.length} total rows.`);
 
         if (untaggedData.length === 0) {
             logCallback("No untagged rows to process in job openings analysis. Returning original data.");
-            return rows;
+            return {
+                data: rows,
+                analytics: { tokensUsed: 0, creditsUsed: 0, supabaseHits: 0, apiCalls: 0 }
+            };
         }
 
-        // Get configuration from environment
         const apiKey = import.meta.env.VITE_REACT_APP_CORESIGNAL_API_KEY;
         const batchSize = parseInt(import.meta.env.VITE_REACT_APP_OPEN_JOBS_BATCH_SIZE || "5");
 
         if (!apiKey) {
             logCallback("⚠️ Coresignal API key is not set. Using fallback data only.");
-            return rows.map(row => ({
-                ...row,
-                job_openings_error: !row.relevanceTag ? 'Coresignal API key not configured' : undefined
-            }));
+            return {
+                data: rows.map(row => ({
+                    ...row,
+                    job_openings_error: !row.relevanceTag ? 'Coresignal API key not configured' : undefined
+                })),
+                analytics: { tokensUsed: 0, creditsUsed: 0, supabaseHits: 0, apiCalls: 0 }
+            };
         }
 
-        // Check for required fields
         const hasOrganizationData = untaggedData.some(row => hasRequiredFields(row));
-        
+
         if (!hasOrganizationData) {
             logCallback("⚠️ No organization LinkedIn URLs found. Job openings analysis requires organization data from Apollo enrichment.");
-            return rows;
+            return {
+                data: rows,
+                analytics: { tokensUsed: 0, creditsUsed: 0, supabaseHits: 0, apiCalls: 0 }
+            };
         }
 
-        // Use file storage for large datasets
         const useFileStorage = rows.length > 1000;
         if (useFileStorage) {
             logCallback('Large dataset detected - using file storage for optimal performance');
         }
 
-        // Check Supabase availability
         const supabaseAvailable = await checkSupabaseAvailability(logCallback);
 
-        if (useFileStorage) {
-            const processFunction = async (chunk) => {
-                return await processChunk(chunk, apiKey, config, supabaseAvailable, logCallback);
-            };
+        try {
+            if (useFileStorage) {
+                const processFunction = async (chunk) => {
+                    const result = await processChunk(chunk, apiKey, config, supabaseAvailable, logCallback);
 
-            const progressFunction = (percent, message) => {
-                progressCallback(percent);
-                logCallback(message);
-            };
+                    // DIRECT TRACKING: Accumulate tokens
+                    totalTokensUsed += result.tokensUsed || 0;
 
-            try {
+                    return result.data;
+                };
+
+                const progressFunction = (percent, message) => {
+                    progressCallback(percent);
+                    logCallback(message);
+                };
+
                 const results = await customEngineFileStorageService.processLargeDataset(
                     untaggedData,
                     processFunction,
@@ -638,74 +671,113 @@ const jobOpeningsService = {
 
                 logCallback(`Job Openings Analysis Complete:`);
                 logCallback(`- Total processed: ${results.length}`);
+                logCallback(`- Total tokens used: ${totalTokensUsed}`);
                 logCallback(`- Processing time: ${processingTimeSeconds.toFixed(2)} seconds`);
 
-                return mergedResults;
-            } catch (error) {
-                logCallback(`Error in large dataset processing: ${error.message}`);
-                throw error;
-            }
-        } else {
-            // Process standard datasets (< 1000 rows)
-            const results = [];
-            let supabaseHits = 0;
-            let coresignalFetches = 0;
-            let errorCount = 0;
+                return {
+                    data: mergedResults,
+                    analytics: {
+                        tokensUsed: totalTokensUsed,
+                        creditsUsed: 0, // Coresignal doesn't use credits
+                        supabaseHits: totalSupabaseHits,
+                        apiCalls: totalApiCalls,
+                        processedCount: results.length,
+                        processingTime: endTimestamp - startTimestamp
+                    }
+                };
+            } else {
+                // Process standard datasets (< 1000 rows)
+                const results = [];
+                let supabaseHits = 0;
+                let coresignalFetches = 0;
+                let errorCount = 0;
 
-            for (let i = 0; i < untaggedData.length; i += batchSize) {
-                const batch = untaggedData.slice(i, Math.min(i + batchSize, untaggedData.length));
-                logCallback(`Processing batch ${Math.floor(i / batchSize) + 1}: items ${i + 1} to ${i + batch.length}`);
+                for (let i = 0; i < untaggedData.length; i += batchSize) {
+                    const batch = untaggedData.slice(i, Math.min(i + batchSize, untaggedData.length));
+                    logCallback(`Processing batch ${Math.floor(i / batchSize) + 1}: items ${i + 1} to ${i + batch.length}`);
 
-                for (const row of batch) {
-                    try {
-                        if (row.relevanceTag || !hasRequiredFields(row)) {
-                            results.push({ ...row });
-                            continue;
+                    for (const row of batch) {
+                        try {
+                            if (row.relevanceTag || !hasRequiredFields(row)) {
+                                results.push({ ...row });
+                                continue;
+                            }
+
+                            const result = await processSingleCompany(
+                                row,
+                                apiKey,
+                                config,
+                                supabaseAvailable,
+                                logCallback
+                            );
+
+                            if (result.source === 'supabase') {
+                                supabaseHits++;
+                                totalSupabaseHits++;
+                            } else if (result.source === 'coresignal') {
+                                coresignalFetches++;
+                            }
+
+                            // DIRECT TRACKING: Count tokens from analysis
+                            if (result.data.tokensUsed) {
+                                totalTokensUsed += result.data.tokensUsed;
+                            }
+
+                            results.push(result.data);
+
+                        } catch (error) {
+                            errorCount++;
+                            totalErrors++;
+                            logCallback(`Error processing company: ${error.message}`);
+                            results.push({
+                                ...row,
+                                job_openings_source: 'error',
+                                job_openings_error: error.message
+                            });
                         }
+                    }
 
-                        const result = await processSingleCompany(
-                            row,
-                            apiKey,
-                            config,
-                            supabaseAvailable,
-                            logCallback
-                        );
+                    const progress = Math.floor(((i + batch.length) / untaggedData.length) * 100);
+                    progressCallback(progress);
 
-                        if (result.source === 'supabase') {
-                            supabaseHits++;
-                        } else if (result.source === 'coresignal') {
-                            coresignalFetches++;
-                        }
-
-                        results.push(result.data);
-
-                    } catch (error) {
-                        errorCount++;
-                        logCallback(`Error processing company: ${error.message}`);
-                        results.push({
-                            ...row,
-                            job_openings_source: 'error',
-                            job_openings_error: error.message
-                        });
+                    if (i + batch.length < untaggedData.length) {
+                        await new Promise(resolve => setTimeout(resolve, 1000));
                     }
                 }
 
-                const progress = Math.floor(((i + batch.length) / untaggedData.length) * 100);
-                progressCallback(progress);
+                const mergedResults = mergeResults(rows, untaggedData, results);
 
-                if (i + batch.length < untaggedData.length) {
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                }
+                // DIRECT TRACKING: Update final metrics
+                metricsStorageService.updateStepCounts(
+                    'jobOpenings',
+                    untaggedData.length,
+                    results.length - errorCount,
+                    errorCount,
+                    Date.now() - startTimestamp
+                );
+
+                logCallback(`Job Openings Analysis Complete:`);
+                logCallback(`- Retrieved from Supabase: ${supabaseHits}`);
+                logCallback(`- Fetched from Coresignal API: ${coresignalFetches}`);
+                logCallback(`- Total tokens used: ${totalTokensUsed}`);
+                logCallback(`- Errors: ${errorCount}`);
+
+                return {
+                    data: mergedResults,
+                    analytics: {
+                        tokensUsed: totalTokensUsed,
+                        creditsUsed: 0,
+                        supabaseHits: totalSupabaseHits,
+                        apiCalls: totalApiCalls,
+                        processedCount: results.length,
+                        processingTime: Date.now() - startTimestamp
+                    }
+                };
             }
-
-            const mergedResults = mergeResults(rows, untaggedData, results);
-
-            logCallback(`Job Openings Analysis Complete:`);
-            logCallback(`- Retrieved from Supabase: ${supabaseHits}`);
-            logCallback(`- Fetched from Coresignal API: ${coresignalFetches}`);
-            logCallback(`- Errors: ${errorCount}`);
-
-            return mergedResults;
+        } catch (error) {
+            metricsStorageService.addError('jobOpenings');
+            logCallback(`Error in job openings analysis: ${error.message}`);
+            throw error;
         }
     },
 

@@ -120,67 +120,6 @@ class CustomEngineOrchestrator {
             this.callbacks.logCallback(logEntry);
         }
         
-        // ENHANCED: Real-time tracking of actual metrics from logs
-        const currentStepId = this.pipeline[this.currentStepIndex];
-        if (currentStepId && message && typeof message === 'string') {
-            
-            // Track main step metrics
-            metricsStorageService.extractMetricsFromLog(currentStepId, message);
-            
-            // ENHANCED: Track Apollo substeps based on actual log content
-            if (currentStepId === 'apolloEnrichment') {
-                
-                // Website Analysis - track when actually happening
-                if (/website.*?analysis|analyzing.*?website|scraping.*?website|website.*?content|serper.*?website/i.test(message)) {
-                    metricsStorageService.extractMetricsFromLog('apolloEnrichment_website', message);
-                    
-                    // Initialize substep if not exists
-                    if (!metricsStorageService.stepMetrics['apolloEnrichment_website']) {
-                        const websiteMetrics = metricsStorageService.initializeStep('apolloEnrichment_website');
-                        websiteMetrics.apiTool = 'Serper + OpenAI';
-                        websiteMetrics.specificMetrics = {
-                            isSubstep: true,
-                            parentStep: 'apolloEnrichment',
-                            substepType: 'website',
-                            description: 'Website Analysis'
-                        };
-                    }
-                }
-                
-                // Employee History Analysis - track when actually happening
-                if (/experience.*?analysis|employment.*?history|linkedin.*?experience|analyzing.*?experience|employment.*?analysis/i.test(message)) {
-                    metricsStorageService.extractMetricsFromLog('apolloEnrichment_experience', message);
-                    
-                    if (!metricsStorageService.stepMetrics['apolloEnrichment_experience']) {
-                        const experienceMetrics = metricsStorageService.initializeStep('apolloEnrichment_experience');
-                        experienceMetrics.apiTool = 'OpenAI GPT';
-                        experienceMetrics.specificMetrics = {
-                            isSubstep: true,
-                            parentStep: 'apolloEnrichment',
-                            substepType: 'experience',
-                            description: 'Employee History Analysis'
-                        };
-                    }
-                }
-                
-                // Sitemap Analysis - track when actually happening
-                if (/sitemap.*?analysis|analyzing.*?sitemap|extracting.*?sitemap|sitemap.*?scraping/i.test(message)) {
-                    metricsStorageService.extractMetricsFromLog('apolloEnrichment_sitemap', message);
-                    
-                    if (!metricsStorageService.stepMetrics['apolloEnrichment_sitemap']) {
-                        const sitemapMetrics = metricsStorageService.initializeStep('apolloEnrichment_sitemap');
-                        sitemapMetrics.apiTool = 'Manual Fetch + OpenAI';
-                        sitemapMetrics.specificMetrics = {
-                            isSubstep: true,
-                            parentStep: 'apolloEnrichment',
-                            substepType: 'sitemap',
-                            description: 'Sitemaps Scraping'
-                        };
-                    }
-                }
-            }
-        }
-        
         console.log(`[Custom Engine][${logEntry.timestamp}] ${message}`);
     }
 
@@ -247,10 +186,7 @@ class CustomEngineOrchestrator {
           this.isProcessing = true;
           this.updateStepStatus(currentStepId, 'processing', 'Processing in progress...');
           this.addLog(`Starting processing step: ${currentStepId}`);
-
-          metricsStorageService.initializeStep(currentStepId);
-          metricsStorageService.setApiTool(currentStepId, this.getApiToolForStep(currentStepId));
-          
+ 
           const startTime = Date.now();
           
           // Get valid data - those without relevance tags
@@ -263,10 +199,10 @@ class CustomEngineOrchestrator {
             outputCount: 0,
             filteredCount: 0,
             processingTime: 0,
-            tokensUsed: 0,     // Add token tracking
-            creditsUsed: 0,    // Add credits tracking
-            apiCalls: 0,       // Add API call counting
-            supabaseHits: 0    // Track cache hits
+            tokensUsed: 0,
+            creditsUsed: 0,
+            apiCalls: 0,
+            supabaseHits: 0
           };
           
           // Process the step with the appropriate service
@@ -287,182 +223,64 @@ class CustomEngineOrchestrator {
           const mergedData = this.mergeProcessedData(this.processedData, processedRows);
           this.processedData = mergedData;
           
-          // Update analytics
+          // Update analytics with ACTUAL values from service
           const endTime = Date.now();
           const filteredCount = processedRows.filter(row => row.relevanceTag).length;
           const outputCount = processedRows.length - filteredCount;
           
-          // Update analytics with service metrics
           this.analytics[currentStepId] = {
             ...this.analytics[currentStepId],
             outputCount,
             filteredCount,
             processingTime: endTime - startTime,
-            // Collect metrics from the service result
+            // Use ACTUAL metrics from service result
             tokensUsed: processorResult.analytics?.tokensUsed || 0,
             creditsUsed: processorResult.analytics?.creditsUsed || 0,
             apiCalls: processorResult.analytics?.apiCalls || 0,
             supabaseHits: processorResult.analytics?.supabaseHits || 0
           };
-
+ 
+          // DIRECT TRACKING: Handle Apollo substeps with actual metrics
           if (currentStepId === 'apolloEnrichment' && stepConfig.config?.options) {
-            this.addLog('Creating Apollo substep metrics...');
+            this.addLog('Creating Apollo substep metrics with actual usage data...');
             
-            // Get the actual metrics that were just processed
-            const apolloBaseMetrics = metricsStorageService.stepMetrics['apolloEnrichment'];
+            // Get actual metrics from the service result
+            const apolloAnalytics = processorResult.analytics || {};
             
-            if (apolloBaseMetrics) {
-                // Create substeps based on enabled options
-                const options = stepConfig.config.options;
-                
-                if (options.analyzeWebsite) {
-                    this.addLog('🌐 Website Analysis - Processing completed');
-                    metricsStorageService.extractMetricsFromLog('apolloEnrichment_website', 'Website Analysis completed - 50 tokens used, 2 credits used');
-                    metricsStorageService.updateStepCounts('apolloEnrichment_website', inputCount, Math.floor(outputCount * 0.8), 0, Math.floor((endTime - startTime) * 0.3));
-                    metricsStorageService.setApiTool('apolloEnrichment_website', 'Serper + OpenAI');
-                }
-                
-                if (options.analyzeExperience) {
-                    this.addLog('👔 Employee History Analysis - Processing completed');
-                    metricsStorageService.extractMetricsFromLog('apolloEnrichment_experience', 'Employee History Analysis completed - 75 tokens used');
-                    metricsStorageService.updateStepCounts('apolloEnrichment_experience', inputCount, Math.floor(outputCount * 0.9), 0, Math.floor((endTime - startTime) * 0.2));
-                    metricsStorageService.setApiTool('apolloEnrichment_experience', 'OpenAI GPT');
-                }
-                
-                if (options.analyzeSitemap) {
-                    this.addLog('🗺️ Sitemaps Scraping - Processing completed');
-                    metricsStorageService.extractMetricsFromLog('apolloEnrichment_sitemap', 'Sitemaps Scraping completed - 30 tokens used, 3 credits used');
-                    metricsStorageService.updateStepCounts('apolloEnrichment_sitemap', inputCount, Math.floor(outputCount * 0.7), 0, Math.floor((endTime - startTime) * 0.25));
-                    metricsStorageService.setApiTool('apolloEnrichment_sitemap', 'Serper + OpenAI');
-                }
-                
-                // Mark substeps as substeps
-                if (options.analyzeWebsite) {
-                    const websiteMetrics = metricsStorageService.initializeStep('apolloEnrichment_website');
-                    websiteMetrics.specificMetrics = {
-                        isSubstep: true,
-                        parentStep: 'apolloEnrichment',
-                        substepType: 'website',
-                        description: 'Website Analysis'
-                    };
-                }
-                
-                if (options.analyzeExperience) {
-                    const experienceMetrics = metricsStorageService.initializeStep('apolloEnrichment_experience');
-                    experienceMetrics.specificMetrics = {
-                        isSubstep: true,
-                        parentStep: 'apolloEnrichment',
-                        substepType: 'experience',
-                        description: 'Employee History Analysis'
-                    };
-                }
-                
-                if (options.analyzeSitemap) {
-                    const sitemapMetrics = metricsStorageService.initializeStep('apolloEnrichment_sitemap');
-                    sitemapMetrics.specificMetrics = {
-                        isSubstep: true,
-                        parentStep: 'apolloEnrichment',
-                        substepType: 'sitemap',
-                        description: 'Sitemaps Scraping'
-                    };
-                }
-                
-                // Update main Apollo to reflect only core enrichment
-                metricsStorageService.extractMetricsFromLog('apolloEnrichment', 'Core Apollo Enrichment completed - 25 tokens used, 0 credits used, 15 supabase hits');
-                
-                this.addLog('✅ Apollo substep metrics created successfully');
-            }
-        }
-
-          metricsStorageService.updateStepCounts(
-            currentStepId,
-            inputCount,
-            outputCount,
-            filteredCount,
-            endTime - startTime
-        );
+            // Create substeps with actual metrics (these should already be tracked by the service)
+            const options = stepConfig.config.options;
+            
+            // Log actual Apollo metrics
+            this.addLog(`📊 Apollo Core - Tokens: ${apolloAnalytics.tokensUsed || 0}, Credits: ${apolloAnalytics.creditsUsed || 0}, Supabase: ${apolloAnalytics.supabaseHits || 0}`);
+            
+            // Update main Apollo step counts
+            metricsStorageService.updateStepCounts(
+                'apolloEnrichment',
+                inputCount,
+                outputCount,
+                filteredCount,
+                endTime - startTime
+            );
+            
+            this.addLog(`✅ Apollo enrichment with substeps completed`);
+          } else {
+            // For non-Apollo steps, update counts normally
+            metricsStorageService.updateStepCounts(
+                currentStepId,
+                inputCount,
+                outputCount,
+                filteredCount,
+                endTime - startTime
+            );
+          }
           
           // Mark step as complete
           this.updateStepStatus(currentStepId, 'complete', 'Processing complete');
           this.addLog(`Completed step ${currentStepId} (${filteredCount} filtered, ${outputCount} valid results)`);
           
-          if (currentStepId === 'apolloEnrichment' && stepConfig.config?.options) {
-            this.addLog('🔧 Creating Apollo substep metrics...');
-            
-            const options = stepConfig.config.options;
-            
-            // Create realistic substep metrics based on actual processing
-            if (options.analyzeWebsite) {
-                metricsStorageService.initializeStep('apolloEnrichment_website');
-                metricsStorageService.extractMetricsFromLog('apolloEnrichment_website', 'Website Analysis - 45 tokens used, 3 credits used');
-                metricsStorageService.updateStepCounts('apolloEnrichment_website', inputCount, Math.floor(outputCount * 0.85), 0, Math.floor((endTime - startTime) * 0.25));
-                metricsStorageService.setApiTool('apolloEnrichment_website', 'Serper + OpenAI');
-                
-                const websiteMetrics = metricsStorageService.stepMetrics['apolloEnrichment_website'];
-                websiteMetrics.specificMetrics = {
-                    isSubstep: true,
-                    parentStep: 'apolloEnrichment',
-                    substepType: 'website',
-                    description: 'Website Analysis'
-                };
-                this.addLog('✅ Website Analysis substep created');
-            }
-            
-            if (options.analyzeExperience) {
-                metricsStorageService.initializeStep('apolloEnrichment_experience');
-                metricsStorageService.extractMetricsFromLog('apolloEnrichment_experience', 'Employee History Analysis - 65 tokens used');
-                metricsStorageService.updateStepCounts('apolloEnrichment_experience', inputCount, Math.floor(outputCount * 0.90), 0, Math.floor((endTime - startTime) * 0.20));
-                metricsStorageService.setApiTool('apolloEnrichment_experience', 'OpenAI GPT');
-                
-                const experienceMetrics = metricsStorageService.stepMetrics['apolloEnrichment_experience'];
-                experienceMetrics.specificMetrics = {
-                    isSubstep: true,
-                    parentStep: 'apolloEnrichment',
-                    substepType: 'experience',
-                    description: 'Employee History Analysis'
-                };
-                this.addLog('✅ Employee History Analysis substep created');
-            }
-            
-            if (options.analyzeSitemap) {
-                metricsStorageService.initializeStep('apolloEnrichment_sitemap');
-                metricsStorageService.extractMetricsFromLog('apolloEnrichment_sitemap', 'Sitemaps Scraping - 25 tokens used, 4 credits used');
-                metricsStorageService.updateStepCounts('apolloEnrichment_sitemap', inputCount, Math.floor(outputCount * 0.75), 0, Math.floor((endTime - startTime) * 0.30));
-                metricsStorageService.setApiTool('apolloEnrichment_sitemap', 'Serper + OpenAI');
-                
-                const sitemapMetrics = metricsStorageService.stepMetrics['apolloEnrichment_sitemap'];
-                sitemapMetrics.specificMetrics = {
-                    isSubstep: true,
-                    parentStep: 'apolloEnrichment',
-                    substepType: 'sitemap',
-                    description: 'Sitemaps Scraping'
-                };
-                this.addLog('✅ Sitemaps Scraping substep created');
-            }
-            
-            // Update main Apollo step to show it has substeps
-            const apolloMetrics = metricsStorageService.stepMetrics['apolloEnrichment'];
-            if (apolloMetrics) {
-                apolloMetrics.specificMetrics = {
-                    isMainStep: true,
-                    hasSubsteps: true,
-                    substepCount: [options.analyzeWebsite, options.analyzeExperience, options.analyzeSitemap].filter(Boolean).length,
-                    description: 'Core Apollo Enrichment'
-                };
-                
-                // Adjust main Apollo metrics to account for substeps
-                apolloMetrics.tokensUsed = Math.max(20, Math.floor(apolloMetrics.tokensUsed * 0.3)); // Core enrichment uses less
-                apolloMetrics.creditsUsed = 0; // Main Apollo doesn't use credits
-                // Keep most Supabase hits in main step
-            }
-            
-            metricsStorageService.saveMetrics();
-            this.addLog(`🎯 Apollo enrichment with ${[options.analyzeWebsite, options.analyzeExperience, options.analyzeSitemap].filter(Boolean).length} substeps completed`);
-        }
-        
         // Move to next step
         this.currentStepIndex++;
-
+ 
           if (this.currentStepIndex >= this.pipeline.length) {
             this.processingComplete = true;
             this.addLog('All processing steps complete!');
@@ -486,22 +304,18 @@ class CustomEngineOrchestrator {
       
       // Add a method to calculate total metrics
       calculateTotalMetrics() {
+        // Get actual metrics from MetricsStorageService
+        const allMetrics = metricsStorageService.getAllMetrics();
+        
         this.totalMetrics = {
-          totalTokensUsed: 0,
-          totalCreditsUsed: 0,
-          totalApiCalls: 0,
-          totalSupabaseHits: 0,
-          totalProcessingTime: 0,
+          totalTokensUsed: allMetrics.totalMetrics.totalTokens,
+          totalCreditsUsed: allMetrics.totalMetrics.totalCredits,
+          totalApiCalls: allMetrics.totalMetrics.totalApiCalls,
+          totalSupabaseHits: allMetrics.totalMetrics.totalSupabaseHits,
+          totalProcessingTime: allMetrics.totalMetrics.totalProcessingTime,
         };
-      
-        // Sum up metrics from all steps
-        Object.values(this.analytics).forEach(stepAnalytics => {
-          this.totalMetrics.totalTokensUsed += stepAnalytics.tokensUsed || 0;
-          this.totalMetrics.totalCreditsUsed += stepAnalytics.creditsUsed || 0;
-          this.totalMetrics.totalApiCalls += stepAnalytics.apiCalls || 0;
-          this.totalMetrics.totalSupabaseHits += stepAnalytics.supabaseHits || 0;
-          this.totalMetrics.totalProcessingTime += stepAnalytics.processingTime || 0;
-        });
+        
+        this.addLog(`📊 FINAL TOTALS - Tokens: ${this.totalMetrics.totalTokensUsed}, Credits: ${this.totalMetrics.totalCreditsUsed}, API Calls: ${this.totalMetrics.totalApiCalls}, Supabase: ${this.totalMetrics.totalSupabaseHits}`);
       }
       
     // Update processServiceStep to capture metrics from each service
@@ -556,97 +370,13 @@ class CustomEngineOrchestrator {
                 };
             }
     
-            // ENHANCED: Initialize comprehensive step metrics
-            const initialMetrics = {
-                totalRows: dataToProcess.length,
-                processedRows: 0,
-                tokensUsed: 0,
-                creditsUsed: 0,
-                apiCalls: 0,
-                supabaseHits: 0,
-                errors: 0,
-                processingTime: 0,
-                apiTool: apiTool,
-                specificMetrics: {}
-            };
+            // DIRECT TRACKING: Initialize metrics tracking
+            metricsStorageService.initializeStep(stepId);
+            metricsStorageService.setApiTool(stepId, apiTool);
     
-            // ENHANCED: Track initial token state from apiClient
-            const initialTokenMetrics = apiClient.getTokenUsageMetrics();
-            const initialTokenCount = Object.values(initialTokenMetrics).reduce((sum, model) => {
-                return sum + (model.total_tokens || 0);
-            }, 0);
-    
-            // ENHANCED: Create metrics tracking callbacks
-            let totalTokensFromLogs = 0;
-            let totalCreditsFromLogs = 0;
-    
+            // Simple log callback - NO MORE LOG PARSING
             const logCallback = (message) => {
                 this.addLog(message);
-                
-                if (typeof message === 'string') {
-                    // ENHANCED: Better token extraction patterns
-                    const tokenPatterns = [
-                        /(\d+)\s*tokens?\s*used/i,
-                        /tokens?[:\s]+(\d+)/i,
-                        /total[_\s]?tokens?[:\s]*(\d+)/i,
-                        /openai.*?(\d+).*?tokens?/i
-                    ];
-                    
-                    for (const pattern of tokenPatterns) {
-                        const tokenMatch = message.match(pattern);
-                        if (tokenMatch) {
-                            const tokens = parseInt(tokenMatch[1]);
-                            if (!isNaN(tokens) && tokens > 0) {
-                                totalTokensFromLogs += tokens;
-                                initialMetrics.tokensUsed = totalTokensFromLogs;
-                                this.addLog(`🔢 Tokens tracked from logs: +${tokens} (Total: ${totalTokensFromLogs})`);
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // ENHANCED: Better credit extraction patterns
-                    const creditPatterns = [
-                        /(\d+)\s*credits?\s*used/i,
-                        /credits?[:\s]+(\d+)/i,
-                        /serper.*?(\d+).*?credits?/i,
-                        /coresignal.*?(\d+).*?credits?/i
-                    ];
-                    
-                    for (const pattern of creditPatterns) {
-                        const creditMatch = message.match(pattern);
-                        if (creditMatch) {
-                            const credits = parseInt(creditMatch[1]);
-                            if (!isNaN(credits) && credits > 0) {
-                                totalCreditsFromLogs += credits;
-                                initialMetrics.creditsUsed = totalCreditsFromLogs;
-                                this.addLog(`💳 Credits tracked from logs: +${credits} (Total: ${totalCreditsFromLogs})`);
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // Track API calls
-                    if (message.toLowerCase().includes('api call') || 
-                        message.toLowerCase().includes('calling') ||
-                        message.toLowerCase().includes('fetching from')) {
-                        initialMetrics.apiCalls += 1;
-                    }
-                    
-                    // Track Supabase hits
-                    if (message.toLowerCase().includes('supabase') || 
-                        message.toLowerCase().includes('cache') ||
-                        message.toLowerCase().includes('using existing')) {
-                        initialMetrics.supabaseHits += 1;
-                    }
-                    
-                    if (message.toLowerCase().includes('error') || 
-                        message.toLowerCase().includes('failed')) {
-                        initialMetrics.errors += 1;
-                    }
-    
-                    this.extractServiceSpecificMetrics(stepId, message, initialMetrics);
-                }
             };
     
             const progressCallback = (percent) => {
@@ -655,7 +385,7 @@ class CustomEngineOrchestrator {
                 }
             };
     
-            // ENHANCED: Call processor and capture all metrics
+            // Call processor with enhanced callbacks
             const result = await processorFunction(
                 dataToProcess,
                 stepConfig.config || {},
@@ -663,73 +393,72 @@ class CustomEngineOrchestrator {
                 progressCallback
             );
     
-            // ENHANCED: Check token usage change from apiClient
-            const finalTokenMetrics = apiClient.getTokenUsageMetrics();
-            const finalTokenCount = Object.values(finalTokenMetrics).reduce((sum, model) => {
-                return sum + (model.total_tokens || 0);
-            }, 0);
+            // DIRECT TRACKING: Extract actual metrics from service result
+            const serviceAnalytics = result.analytics || {};
             
-            const stepTokensFromClient = finalTokenCount - initialTokenCount;
-            if (stepTokensFromClient > 0) {
-                initialMetrics.tokensUsed = Math.max(initialMetrics.tokensUsed, stepTokensFromClient);
-                this.addLog(`🔢 Final tokens from API client: ${stepTokensFromClient}`);
+            // Update step metrics with ACTUAL values from service
+            const actualMetrics = {
+                totalRows: dataToProcess.length,
+                processedRows: Array.isArray(result.data) ? result.data.length : (result?.data?.length || 0),
+                tokensUsed: serviceAnalytics.tokensUsed || 0,
+                creditsUsed: serviceAnalytics.creditsUsed || 0,
+                apiCalls: serviceAnalytics.apiCalls || 0,
+                supabaseHits: serviceAnalytics.supabaseHits || 0,
+                errors: serviceAnalytics.errors || 0,
+                processingTime: Date.now() - stepStartTime,
+                apiTool: apiTool
+            };
+    
+            // DIRECT TRACKING: Update metrics storage with actual values
+            const metrics = metricsStorageService.stepMetrics[stepId];
+            if (metrics) {
+                // Override with actual values from service
+                metrics.tokensUsed = actualMetrics.tokensUsed;
+                metrics.creditsUsed = actualMetrics.creditsUsed;
+                metrics.apiCalls = actualMetrics.apiCalls;
+                metrics.supabaseHits = actualMetrics.supabaseHits;
+                metrics.errors = actualMetrics.errors;
+                metrics.inputCount = actualMetrics.totalRows;
+                metrics.outputCount = actualMetrics.processedRows;
+                metrics.processingTime = actualMetrics.processingTime;
+                
+                // Update totals
+                metricsStorageService.totalMetrics.totalTokens += actualMetrics.tokensUsed;
+                metricsStorageService.totalMetrics.totalCredits += actualMetrics.creditsUsed;
+                metricsStorageService.totalMetrics.totalApiCalls += actualMetrics.apiCalls;
+                metricsStorageService.totalMetrics.totalSupabaseHits += actualMetrics.supabaseHits;
+                metricsStorageService.totalMetrics.totalProcessingTime += actualMetrics.processingTime;
+                
+                metricsStorageService.saveMetrics();
             }
     
-            // ENHANCED: Extract metrics from service result
-            if (result && result.analytics) {
-                if (result.analytics.tokensUsed && result.analytics.tokensUsed > initialMetrics.tokensUsed) {
-                    initialMetrics.tokensUsed = result.analytics.tokensUsed;
-                }
-                if (result.analytics.creditsUsed && result.analytics.creditsUsed > initialMetrics.creditsUsed) {
-                    initialMetrics.creditsUsed = result.analytics.creditsUsed;
-                }
-                if (result.analytics.supabaseHits) {
-                    initialMetrics.supabaseHits += result.analytics.supabaseHits;
-                }
-                if (result.analytics.apiCalls) {
-                    initialMetrics.apiCalls += result.analytics.apiCalls;
-                }
-            }
-    
-            const stepEndTime = Date.now();
-            initialMetrics.processingTime = stepEndTime - stepStartTime;
-            initialMetrics.processedRows = Array.isArray(result) ? result.length : (result?.data?.length || 0);
-    
-            // ENHANCED: Final logging of captured metrics
-            this.addLog(`📊 Final step metrics - Tokens: ${initialMetrics.tokensUsed}, Credits: ${initialMetrics.creditsUsed}, API Calls: ${initialMetrics.apiCalls}`);
-    
-            this.updateStepMetrics(stepId, initialMetrics);
-    
-            // ENHANCED: Create Apollo substep metrics if needed
-            if (stepId === 'apolloEnrichment' && stepConfig.config?.options) {
-                this.createApolloSubstepMetrics(stepConfig.config.options, initialMetrics);
-            }
+            this.addLog(`📊 Step ${stepId} metrics - Tokens: ${actualMetrics.tokensUsed}, Credits: ${actualMetrics.creditsUsed}, API Calls: ${actualMetrics.apiCalls}, Supabase: ${actualMetrics.supabaseHits}`);
     
             return {
-                data: Array.isArray(result) ? result : (result?.data || []),
+                data: Array.isArray(result.data) ? result.data : (result?.data || []),
                 analytics: {
-                    processedCount: initialMetrics.processedRows,
-                    processingTime: initialMetrics.processingTime,
-                    tokensUsed: initialMetrics.tokensUsed,
-                    creditsUsed: initialMetrics.creditsUsed,
-                    supabaseHits: initialMetrics.supabaseHits,
-                    apiCalls: initialMetrics.apiCalls,
-                    errors: initialMetrics.errors
+                    processedCount: actualMetrics.processedRows,
+                    processingTime: actualMetrics.processingTime,
+                    tokensUsed: actualMetrics.tokensUsed,
+                    creditsUsed: actualMetrics.creditsUsed,
+                    supabaseHits: actualMetrics.supabaseHits,
+                    apiCalls: actualMetrics.apiCalls,
+                    errors: actualMetrics.errors
                 }
             };
     
         } catch (error) {
             this.addLog(`Error in service step ${stepId}: ${error.message}`);
             
-            this.updateStepMetrics(stepId, {
-                totalRows: dataToProcess?.length || 0,
-                processedRows: 0,
-                errors: 1,
-                processingTime: Date.now() - stepStartTime,
-                apiTool: apiTool || 'Internal',
-                tokensUsed: 0,
-                creditsUsed: 0
-            });
+            // DIRECT TRACKING: Count error
+            metricsStorageService.addError(stepId);
+            metricsStorageService.updateStepCounts(
+                stepId,
+                dataToProcess?.length || 0,
+                0,
+                1,
+                Date.now() - stepStartTime
+            );
             
             throw error;
         }
@@ -880,35 +609,34 @@ class CustomEngineOrchestrator {
         const totalOriginalCount = this.initialData?.length || 0;
         const totalFinalCount = this.processedData ? 
             this.processedData.filter(row => !row.relevanceTag).length : 0;
-    
-        // Convert stepsMetrics to stepMetrics array format INCLUDING substeps
-        const stepMetrics = [];
+ 
+        // Get actual metrics from MetricsStorageService
+        const storedMetrics = metricsStorageService.getAllMetrics();
+        let stepMetrics = [];
         
-        Object.keys(this.stepsMetrics).forEach(stepId => {
-            const metric = this.stepsMetrics[stepId];
-            
-            stepMetrics.push({
-                stepName: stepId,
-                inputCount: metric.totalRows,
-                outputCount: metric.processedRows,
-                filteredCount: Math.max(0, metric.totalRows - metric.processedRows),
+        if (storedMetrics && storedMetrics.stepMetrics) {
+            stepMetrics = storedMetrics.stepMetrics.map(metric => ({
+                stepName: metric.stepName,
+                inputCount: metric.inputCount,
+                outputCount: metric.outputCount,
+                filteredCount: metric.filteredCount,
                 processingTime: metric.processingTime,
-                tokensUsed: metric.tokensUsed,
-                creditsUsed: metric.creditsUsed || 0, // Ensure this exists
-                apiCalls: metric.apiCalls || 0,
-                supabaseHits: metric.supabaseHits,
+                tokensUsed: metric.tokensUsed, // ACTUAL values
+                creditsUsed: metric.creditsUsed, // ACTUAL values
+                apiCalls: metric.apiCalls, // ACTUAL values
+                supabaseHits: metric.supabaseHits, // ACTUAL values
                 errors: metric.errors,
                 apiTool: metric.apiTool,
-                avgTokensPerRow: metric.avgTokensPerRow || 0,
-                avgTimePerRow: metric.avgTimePerRow || 0,
+                avgTokensPerRow: metric.inputCount > 0 ? (metric.tokensUsed / metric.inputCount) : 0,
+                avgTimePerRow: metric.inputCount > 0 ? ((metric.processingTime / 1000) / metric.inputCount) : 0,
                 specificMetrics: metric.specificMetrics || {}
-            });
-        });
-    
+            }));
+        }
+ 
         return {
             originalCount: totalOriginalCount,
             finalCount: totalFinalCount,
-            stepMetrics: stepMetrics, // Now includes substeps
+            stepMetrics: stepMetrics, // Now includes ACTUAL tracked metrics including substeps
             processingStats: {
                 totalRows: totalOriginalCount,
                 processedRows: totalFinalCount,

@@ -1,19 +1,28 @@
 // services/enrichment-services/websiteAnalysisService.js
 import apiClient from '../../utils/apiClient';
+import metricsStorageService from '../analytics/MetricsStorageService';
 
 /**
  * Website Content Analysis Service
  */
 const websiteAnalysisService = {
-    async analyzeWebsites(rows, prompt, logCallback = () => {}, progressCallback = () => {}) {
+    async analyzeWebsites(rows, prompt, logCallback = () => { }, progressCallback = () => { }) {
         logCallback("Starting Website Content Analysis...");
+
+        // DIRECT TRACKING: Initialize counters
+        let totalTokensUsed = 0;
+        let totalApiCalls = 0;
+        let totalErrors = 0;
 
         const untaggedData = rows.filter(row => !row.relevanceTag);
         logCallback(`Processing ${untaggedData.length} untagged rows out of ${rows.length} total rows.`);
 
         if (untaggedData.length === 0) {
             logCallback("No untagged rows to process for website analysis.");
-            return rows;
+            return {
+                data: rows,
+                analytics: { tokensUsed: 0, apiCalls: 0, errors: 0 }
+            };
         }
 
         const model = import.meta.env.VITE_REACT_APP_TITLE_RELEVANCE_MODEL || 'gpt-4o-mini';
@@ -38,8 +47,12 @@ const websiteAnalysisService = {
                     .then(result => {
                         processedRows.push({
                             ...row,
-                            ...result
+                            ...result.data
                         });
+
+                        // DIRECT TRACKING: Count usage
+                        totalTokensUsed += result.tokensUsed || 0;
+                        totalApiCalls += result.apiCalls || 0;
 
                         successCount++;
                         logCallback(`Analyzed website for ${row['organization.name'] || row.company}`);
@@ -48,7 +61,8 @@ const websiteAnalysisService = {
                     .catch(error => {
                         logCallback(`Error analyzing website for ${row['organization.name'] || row.company}: ${error.message}`);
                         errorCount++;
-                        
+                        totalErrors++;
+
                         processedRows.push({
                             ...row,
                             website_analysis: 'Analysis failed',
@@ -75,27 +89,34 @@ const websiteAnalysisService = {
 
         logCallback(`Website Analysis Complete:`);
         logCallback(`- Successfully analyzed: ${successCount}`);
+        logCallback(`- Total tokens used: ${totalTokensUsed}`);
+        logCallback(`- Total API calls: ${totalApiCalls}`);
         logCallback(`- Errors: ${errorCount}`);
 
-        return finalData;
+        return {
+            data: finalData,
+            analytics: {
+                tokensUsed: totalTokensUsed,
+                apiCalls: totalApiCalls,
+                errors: totalErrors,
+                processedCount: successCount
+            }
+        };
     },
 
     async analyzeSingleWebsite(row, prompt, model, logCallback) {
         try {
-            // Get company information
             const companyName = row['organization.name'] || row.company || '';
             const websiteContent = row.raw_website_content || '';
             const seoDescription = row['organization.seo_description'] || '';
             const shortDescription = row['organization.short_description'] || '';
             
-            // Combine descriptions
             const companyDescription = [seoDescription, shortDescription].filter(Boolean).join(' ');
-
+    
             if (!websiteContent && !companyDescription) {
                 throw new Error('No website content or company description available for analysis');
             }
-
-            // Replace placeholders in prompt
+    
             let processedPrompt = prompt;
             const placeholders = {
                 '{{company}}': companyName,
@@ -107,14 +128,16 @@ const websiteAnalysisService = {
                 '{{company_description}}': companyDescription,
                 '<company_description>': companyDescription
             };
-
+    
             Object.entries(placeholders).forEach(([placeholder, value]) => {
                 processedPrompt = processedPrompt.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
             });
-
+    
             logCallback(`Analyzing website content for: ${companyName}`);
-
-            // Call OpenAI API
+    
+            // DIRECT TRACKING: Count API call for website analysis
+            metricsStorageService.addApiCall('apolloEnrichment_website');
+            
             const response = await apiClient.openai.chatCompletion({
                 model: model,
                 messages: [
@@ -130,24 +153,38 @@ const websiteAnalysisService = {
                 max_tokens: 300,
                 temperature: 0.3
             });
-
+    
             let analysis = '';
+            let tokensUsed = 0;
+            
             if (response && response.choices && response.choices[0] && response.choices[0].message) {
                 analysis = response.choices[0].message.content?.trim();
             } else if (response && response.data && response.data.choices) {
                 analysis = response.data.choices[0].message.content?.trim();
             }
-
+    
+            if (response?.usage?.total_tokens) {
+                tokensUsed = response.usage.total_tokens;
+                // DIRECT TRACKING: Add tokens to substep
+                metricsStorageService.addTokens('apolloEnrichment_website', tokensUsed);
+            }
+    
             if (!analysis) {
                 throw new Error("OpenAI API returned empty content");
             }
-
+    
             return {
-                website_analysis: analysis,
-                website_analysis_timestamp: new Date().toISOString()
+                data: {
+                    website_analysis: analysis,
+                    website_analysis_timestamp: new Date().toISOString()
+                },
+                tokensUsed: tokensUsed,
+                apiCalls: 1
             };
-
+    
         } catch (error) {
+            // DIRECT TRACKING: Count error
+            metricsStorageService.addError('apolloEnrichment_website');
             throw new Error(`Failed to analyze website: ${error.message}`);
         }
     },

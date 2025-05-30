@@ -1,19 +1,14 @@
 // services/enrichment-services/promptAnalysisService.js
 import apiClient from '../../utils/apiClient';
+import metricsStorageService from '../analytics/MetricsStorageService';
 import customEngineFileStorageService from '../custom-engine/customEngineFileStorageService';
 
 /**
- * High-Performance Prompt Analysis Service
- * Optimized for processing 10,000+ rows with file storage
+ * High-Performance Prompt Analysis Service with DIRECT TRACKING
  */
 const promptAnalysisService = {
     /**
      * Process data with custom prompt analysis
-     * @param {Array} rows - Array of data rows to process
-     * @param {Object} config - Configuration object containing prompt and other settings
-     * @param {Function} logCallback - Optional callback for logging
-     * @param {Function} progressCallback - Optional callback for progress updates
-     * @returns {Promise<Array>} - Processed rows with analysis results
      */
     async processData(rows, config = {}, logCallback = () => { }, progressCallback = () => { }) {
         logCallback('Starting High-Performance Prompt Analysis...');
@@ -22,14 +17,16 @@ const promptAnalysisService = {
             throw new Error('No prompt provided for analysis');
         }
 
-        // Get model from environment
-        const model = import.meta.env.VITE_REACT_APP_TITLE_RELEVANCE_MODEL || 'gpt-4o-mini';
+        // DIRECT TRACKING: Initialize counters
+        let totalTokensUsed = 0;
+        let totalApiCalls = 0;
+        let totalErrors = 0;
 
-        // Optimized settings for fast processing
-        const batchSize = 100; // Larger batches for speed
-        const concurrentRequests = 10; // Process multiple requests concurrently
-        const maxTokens = 50; // Short responses for speed
-        const temperature = 0.1; // Low temperature for consistency
+        const model = import.meta.env.VITE_REACT_APP_TITLE_RELEVANCE_MODEL || 'gpt-4o-mini';
+        const batchSize = 100;
+        const concurrentRequests = 10;
+        const maxTokens = 50;
+        const temperature = 0.1;
 
         logCallback(`Using model: ${model}`);
         logCallback(`Processing ${rows.length} rows in batches of ${batchSize} with ${concurrentRequests} concurrent requests`);
@@ -40,13 +37,10 @@ const promptAnalysisService = {
         let successCount = 0;
         let errorCount = 0;
         let skippedCount = 0;
-        let tokensUsed = 0;
 
-        // Get available fields for placeholder replacement
         const availableFields = promptAnalysisService.getAvailableFields(rows);
         logCallback(`Available fields: ${availableFields.join(', ')}`);
 
-        // Validate prompt has valid placeholders
         const placeholders = promptAnalysisService.extractPlaceholders(config.prompt);
         const invalidPlaceholders = placeholders.filter(p => !availableFields.includes(p));
 
@@ -54,16 +48,14 @@ const promptAnalysisService = {
             logCallback(`Warning: Invalid placeholders found: ${invalidPlaceholders.join(', ')}`);
         }
 
-        // Use file storage for large datasets
         const useFileStorage = rows.length > 1000;
         if (useFileStorage) {
             logCallback('Large dataset detected - using file storage for optimal performance');
         }
 
-        // Process using custom engine file storage service for large datasets
         if (useFileStorage) {
             const processFunction = async (chunk) => {
-                return await promptAnalysisService.processChunkConcurrently(
+                const result = await promptAnalysisService.processChunkConcurrently(
                     chunk,
                     config.prompt,
                     availableFields,
@@ -74,6 +66,26 @@ const promptAnalysisService = {
                     config.filter,
                     logCallback
                 );
+
+                // DIRECT TRACKING: Count chunk usage
+                const chunkTokens = result.tokensUsed || 0;
+                const chunkApiCalls = result.apiCalls || 0;
+                const chunkErrors = result.errors || 0;
+
+                totalTokensUsed += chunkTokens;
+                totalApiCalls += chunkApiCalls;
+                totalErrors += chunkErrors;
+
+                // Track in metrics service
+                metricsStorageService.addTokens('promptAnalysis', chunkTokens);
+                for (let i = 0; i < chunkApiCalls; i++) {
+                    metricsStorageService.addApiCall('promptAnalysis');
+                }
+                for (let i = 0; i < chunkErrors; i++) {
+                    metricsStorageService.addError('promptAnalysis');
+                }
+
+                return result.data;
             };
 
             const progressFunction = (percent, message) => {
@@ -93,17 +105,28 @@ const promptAnalysisService = {
 
                 logCallback(`High-Performance Prompt Analysis Complete:`);
                 logCallback(`- Total processed: ${results.length}`);
+                logCallback(`- Total tokens used: ${totalTokensUsed}`);
+                logCallback(`- Total API calls: ${totalApiCalls}`);
                 logCallback(`- Processing time: ${processingTimeSeconds.toFixed(2)} seconds`);
                 logCallback(`- Average time per row: ${(processingTimeSeconds / results.length * 1000).toFixed(2)}ms`);
 
-                return results;
+                return {
+                    data: results,
+                    analytics: {
+                        tokensUsed: totalTokensUsed,
+                        apiCalls: totalApiCalls,
+                        errors: totalErrors,
+                        processedCount: results.length,
+                        processingTime: endTimestamp - startTimestamp
+                    }
+                };
 
             } catch (error) {
+                metricsStorageService.addError('promptAnalysis');
                 logCallback(`Error in large dataset processing: ${error.message}`);
                 throw error;
             }
         } else {
-            // Process smaller datasets normally
             return await promptAnalysisService.processStandardDataset(
                 rows,
                 config,
@@ -120,33 +143,34 @@ const promptAnalysisService = {
     },
 
     /**
-     * Process chunk with concurrent requests for maximum speed
+     * Process chunk with concurrent requests for maximum speed - WITH DIRECT TRACKING
      */
     async processChunkConcurrently(chunk, prompt, availableFields, model, concurrentRequests, maxTokens, temperature, filter, logCallback) {
         const results = [];
+        let chunkTokensUsed = 0;
+        let chunkApiCalls = 0;
+        let chunkErrors = 0;
 
-        // Process in smaller concurrent batches
         for (let i = 0; i < chunk.length; i += concurrentRequests) {
             const concurrentBatch = chunk.slice(i, Math.min(i + concurrentRequests, chunk.length));
 
-            // Create promises for concurrent processing
             const promises = concurrentBatch.map(async (row, index) => {
                 try {
-                    // Skip if already processed
                     if (row.relevanceTag || row.promptAnalysis) {
                         return { ...row };
                     }
 
-                    // Replace placeholders
                     const processedPrompt = promptAnalysisService.replacePlaceholders(prompt, row, availableFields);
 
-                    // Call API
+                    // DIRECT TRACKING: Call API and track usage
                     const result = await promptAnalysisService.callAnalysisAPI(processedPrompt, model, temperature, maxTokens);
 
-                    // Process response
+                    // Track actual token usage
+                    chunkTokensUsed += result.totalTokens || 0;
+                    chunkApiCalls += 1;
+
                     const analysis = result.completion?.trim() || 'No analysis available';
 
-                    // Apply filters if configured
                     let relevanceTag = '';
                     if (filter && filter.rules) {
                         relevanceTag = promptAnalysisService.applyFilters(row, analysis, filter.rules);
@@ -160,6 +184,7 @@ const promptAnalysisService = {
                     };
 
                 } catch (error) {
+                    chunkErrors += 1;
                     logCallback(`Error processing row: ${error.message}`);
                     return {
                         ...row,
@@ -171,33 +196,37 @@ const promptAnalysisService = {
                 }
             });
 
-            // Wait for concurrent batch to complete
             const batchResults = await Promise.all(promises);
             results.push(...batchResults);
 
-            // Small delay to respect rate limits
             if (i + concurrentRequests < chunk.length) {
                 await new Promise(resolve => setTimeout(resolve, 50));
             }
         }
 
-        return results;
+        return {
+            data: results,
+            tokensUsed: chunkTokensUsed,
+            apiCalls: chunkApiCalls,
+            errors: chunkErrors
+        };
     },
 
     /**
-     * Process standard datasets (< 1000 rows)
+     * Process standard datasets (< 1000 rows) - WITH DIRECT TRACKING
      */
     async processStandardDataset(rows, config, availableFields, model, batchSize, concurrentRequests, maxTokens, temperature, logCallback, progressCallback) {
         const processedRows = [];
         let successCount = 0;
         let errorCount = 0;
+        let totalTokensUsed = 0;
+        let totalApiCalls = 0;
 
-        // Process in batches
         for (let i = 0; i < rows.length; i += batchSize) {
             const batch = rows.slice(i, Math.min(i + batchSize, rows.length));
             logCallback(`Processing batch ${Math.floor(i / batchSize) + 1}: items ${i + 1} to ${i + batch.length}`);
 
-            const batchResults = await promptAnalysisService.processChunkConcurrently(
+            const batchResult = await promptAnalysisService.processChunkConcurrently(
                 batch,
                 config.prompt,
                 availableFields,
@@ -209,14 +238,26 @@ const promptAnalysisService = {
                 logCallback
             );
 
-            processedRows.push(...batchResults);
+            processedRows.push(...batchResult.data);
 
-            // Update progress
+            // DIRECT TRACKING: Accumulate usage
+            totalTokensUsed += batchResult.tokensUsed || 0;
+            totalApiCalls += batchResult.apiCalls || 0;
+            errorCount += batchResult.errors || 0;
+
+            // Track in metrics service
+            metricsStorageService.addTokens('promptAnalysis', batchResult.tokensUsed || 0);
+            for (let j = 0; j < (batchResult.apiCalls || 0); j++) {
+                metricsStorageService.addApiCall('promptAnalysis');
+            }
+            for (let j = 0; j < (batchResult.errors || 0); j++) {
+                metricsStorageService.addError('promptAnalysis');
+            }
+
             const progress = Math.floor(((i + batch.length) / rows.length) * 100);
             progressCallback(progress);
 
-            // Count results
-            batchResults.forEach(row => {
+            batchResult.data.forEach(row => {
                 if (row.analysisError) {
                     errorCount++;
                 } else {
@@ -226,7 +267,19 @@ const promptAnalysisService = {
         }
 
         logCallback(`Standard processing complete: ${successCount} success, ${errorCount} errors`);
-        return processedRows;
+        logCallback(`Total tokens used: ${totalTokensUsed}`);
+        logCallback(`Total API calls: ${totalApiCalls}`);
+
+        return {
+            data: processedRows,
+            analytics: {
+                tokensUsed: totalTokensUsed,
+                apiCalls: totalApiCalls,
+                errors: errorCount,
+                processedCount: successCount,
+                processingTime: 0
+            }
+        };
     },
 
     /**
@@ -280,7 +333,7 @@ const promptAnalysisService = {
     },
 
     /**
-     * Call OpenAI API for analysis (optimized for speed)
+     * Call OpenAI API for analysis (optimized for speed) - WITH DIRECT TRACKING
      */
     async callAnalysisAPI(prompt, model, temperature, maxTokens) {
         try {
@@ -326,7 +379,6 @@ const promptAnalysisService = {
                 fieldValue = row[rule.field] || '';
             }
 
-            // Case-insensitive comparison
             const fieldValueLower = String(fieldValue).toLowerCase();
             const ruleValueLower = String(rule.value).toLowerCase();
 
@@ -366,7 +418,6 @@ const promptAnalysisService = {
                     matchesRule = false;
             }
 
-            // Apply action based on match
             if (matchesRule) {
                 if (rule.action === 'eliminate') {
                     return `filtered_${rule.field}_${rule.operator}_${rule.value}`;
@@ -378,14 +429,14 @@ const promptAnalysisService = {
             }
         }
 
-        return ''; // No filter applied
+        return '';
     },
 
     /**
      * Process with configuration (for compatibility with existing engine builder)
      */
     async processWithConfig(rows, config) {
-        return this.processData(rows, config);
+        return promptAnalysisService.processData(rows, config);
     }
 };
 

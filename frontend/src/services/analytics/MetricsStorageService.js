@@ -38,142 +38,44 @@ class MetricsStorageService {
         return this.stepMetrics[stepName];
     }
 
-    // Parse and extract metrics from log messages
-    extractMetricsFromLog(stepName, logMessage) {
-        if (!stepName || !logMessage || typeof logMessage !== 'string') return;
-
+    // DIRECT TRACKING METHODS - called from services
+    addTokens(stepName, tokens) {
         const metrics = this.initializeStep(stepName);
-        let updated = false;
-
-        // Enhanced token extraction patterns
-        const tokenPatterns = [
-            /(\d+)\s*tokens?\s*used/i,
-            /tokens?[:\s]+(\d+)/i,
-            /total[_\s]?tokens?[:\s]*(\d+)/i,
-            /openai.*?(\d+).*?tokens?/i,
-            /gpt.*?(\d+).*?tokens?/i,
-            /token[_\s]?usage[:\s]*(\d+)/i
-        ];
-
-        for (const pattern of tokenPatterns) {
-            const match = logMessage.match(pattern);
-            if (match) {
-                const tokens = parseInt(match[1]);
-                if (!isNaN(tokens) && tokens > 0) {
-                    metrics.tokensUsed += tokens;
-                    this.totalMetrics.totalTokens += tokens;
-                    updated = true;
-                    console.log(`🔢 Captured ${tokens} tokens for ${stepName} (Total: ${metrics.tokensUsed})`);
-                    break;
-                }
-            }
-        }
-
-        // Enhanced credit extraction patterns
-        const creditPatterns = [
-            /(\d+)\s*credits?\s*used/i,
-            /credits?[:\s]+(\d+)/i,
-            /serper.*?(\d+).*?credits?/i,
-            /coresignal.*?(\d+).*?credits?/i,
-            /credit[_\s]?usage[:\s]*(\d+)/i,
-            /api.*?(\d+).*?credits?/i
-        ];
-
-        for (const pattern of creditPatterns) {
-            const match = logMessage.match(pattern);
-            if (match) {
-                const credits = parseInt(match[1]);
-                if (!isNaN(credits) && credits > 0) {
-                    metrics.creditsUsed += credits;
-                    this.totalMetrics.totalCredits += credits;
-                    updated = true;
-                    console.log(`💳 Captured ${credits} credits for ${stepName} (Total: ${metrics.creditsUsed})`);
-                    break;
-                }
-            }
-        }
-
-        // API call patterns
-        const apiCallPatterns = [
-            /api call/i,
-            /calling.*?api/i,
-            /fetching from.*?api/i,
-            /requesting.*?api/i,
-            /apollo api/i,
-            /openai api/i,
-            /serper api/i,
-            /coresignal api/i
-        ];
-
-        for (const pattern of apiCallPatterns) {
-            if (pattern.test(logMessage)) {
-                metrics.apiCalls += 1;
-                this.totalMetrics.totalApiCalls += 1;
-                updated = true;
-                break;
-            }
-        }
-
-        // Supabase hit patterns
-        const supabasePatterns = [
-            /using.*?supabase/i,
-            /from.*?supabase/i,
-            /cache.*?hit/i,
-            /using.*?existing.*?data/i,
-            /retrieved.*?from.*?database/i,
-            /using.*?cached/i
-        ];
-
-        for (const pattern of supabasePatterns) {
-            if (pattern.test(logMessage)) {
-                metrics.supabaseHits += 1;
-                updated = true;
-                break;
-            }
-        }
-
-        // Error patterns
-        if (/error|failed|exception/i.test(logMessage)) {
-            metrics.errors += 1;
-            updated = true;
-        }
-
-        // Specific service patterns
-        this.extractServiceSpecificMetrics(stepName, logMessage, metrics);
-
-        if (updated) {
-            this.saveMetrics();
-        }
+        metrics.tokensUsed += tokens;
+        this.totalMetrics.totalTokens += tokens;
+        this.saveMetrics();
+        console.log(`🔢 Added ${tokens} tokens to ${stepName} (Total: ${metrics.tokensUsed})`);
     }
 
-    // Extract service-specific metrics
-    extractServiceSpecificMetrics(stepName, logMessage, metrics) {
-        if (stepName === 'apolloEnrichment') {
-            if (/fetched.*?from.*?apollo/i.test(logMessage)) {
-                const match = logMessage.match(/(\d+)/);
-                if (match) {
-                    metrics.specificMetrics.apolloFetches = (metrics.specificMetrics.apolloFetches || 0) + parseInt(match[1]);
-                }
-            }
-        }
+    addCredits(stepName, credits) {
+        const metrics = this.initializeStep(stepName);
+        metrics.creditsUsed += credits;
+        this.totalMetrics.totalCredits += credits;
+        this.saveMetrics();
+        console.log(`💳 Added ${credits} credits to ${stepName} (Total: ${metrics.creditsUsed})`);
+    }
 
-        if (stepName === 'jobOpenings') {
-            if (/coresignal.*?api/i.test(logMessage)) {
-                const match = logMessage.match(/(\d+)/);
-                if (match) {
-                    metrics.specificMetrics.coresignalFetches = (metrics.specificMetrics.coresignalFetches || 0) + parseInt(match[1]);
-                }
-            }
-        }
+    addApiCall(stepName) {
+        const metrics = this.initializeStep(stepName);
+        metrics.apiCalls += 1;
+        this.totalMetrics.totalApiCalls += 1;
+        this.saveMetrics();
+        console.log(`📞 Added API call to ${stepName} (Total: ${metrics.apiCalls})`);
+    }
 
-        if (stepName === 'financialInsight') {
-            if (/public companies/i.test(logMessage)) {
-                const match = logMessage.match(/(\d+)/);
-                if (match) {
-                    metrics.specificMetrics.publicCompanies = parseInt(match[1]);
-                }
-            }
-        }
+    addSupabaseHit(stepName) {
+        const metrics = this.initializeStep(stepName);
+        metrics.supabaseHits += 1;
+        this.totalMetrics.totalSupabaseHits += 1;
+        this.saveMetrics();
+        console.log(`💾 Added Supabase hit to ${stepName} (Total: ${metrics.supabaseHits})`);
+    }
+
+    addError(stepName) {
+        const metrics = this.initializeStep(stepName);
+        metrics.errors += 1;
+        this.saveMetrics();
+        console.log(`❌ Added error to ${stepName} (Total: ${metrics.errors})`);
     }
 
     // Update step metrics with counts
@@ -208,7 +110,6 @@ class MetricsStorageService {
     saveMetrics() {
         const allMetrics = this.getAllMetrics();
         storageUtils.saveToStorage(storageUtils.STORAGE_KEYS.CUSTOM_ENGINE_METRICS, allMetrics);
-        console.log('📊 Metrics saved to storage:', allMetrics);
     }
 
     // Load metrics from storage
@@ -224,24 +125,87 @@ class MetricsStorageService {
         }
     }
 
-    // Create Apollo substeps with proper metrics distribution
-    createApolloSubsteps(options, baseStepName) {
-        // Don't create artificial substeps with ratios
-        // Substeps should already exist from real-time tracking during processing
-        console.log('🔧 Apollo substeps should already exist from real-time tracking');
+    // Create Apollo substeps with direct tracking
+    // Create Apollo substeps with actual metrics from independent processes
+createApolloSubsteps(options, baseStepName, actualMetrics) {
+    console.log('🔧 Creating Apollo substeps with ACTUAL metrics...');
+    
+    // Create substeps only if they were actually processed
+    if (options.analyzeWebsite && (actualMetrics.websiteTokens > 0 || actualMetrics.websiteCredits > 0)) {
+        const websiteMetrics = this.initializeStep('apolloEnrichment_website');
+        websiteMetrics.apiTool = 'Serper + OpenAI';
+        websiteMetrics.tokensUsed = actualMetrics.websiteTokens || 0;
+        websiteMetrics.creditsUsed = actualMetrics.websiteCredits || 0;
+        websiteMetrics.specificMetrics = {
+            isSubstep: true,
+            parentStep: 'apolloEnrichment',
+            substepType: 'website',
+            description: 'Website Analysis',
+            actualTokens: actualMetrics.websiteTokens || 0,
+            actualCredits: actualMetrics.websiteCredits || 0
+        };
         
-        // Just ensure the main Apollo step is marked properly
-        const baseMetrics = this.stepMetrics[baseStepName];
-        if (baseMetrics) {
-            baseMetrics.specificMetrics = {
-                isMainStep: true,
-                hasSubsteps: true,
-                substepCount: Object.keys(this.stepMetrics).filter(key => key.startsWith('apolloEnrichment_')).length,
-                description: 'Core Apollo Enrichment'
-            };
-            this.saveMetrics();
-        }
+        // Update totals
+        this.totalMetrics.totalTokens += websiteMetrics.tokensUsed;
+        this.totalMetrics.totalCredits += websiteMetrics.creditsUsed;
+        
+        console.log(`✅ Website substep created - ${websiteMetrics.tokensUsed} tokens, ${websiteMetrics.creditsUsed} credits`);
     }
+    
+    if (options.analyzeExperience && actualMetrics.experienceTokens > 0) {
+        const experienceMetrics = this.initializeStep('apolloEnrichment_experience');
+        experienceMetrics.apiTool = 'OpenAI GPT';
+        experienceMetrics.tokensUsed = actualMetrics.experienceTokens || 0;
+        experienceMetrics.creditsUsed = 0; // Experience analysis doesn't use credits
+        experienceMetrics.specificMetrics = {
+            isSubstep: true,
+            parentStep: 'apolloEnrichment',
+            substepType: 'experience',
+            description: 'Employee History Analysis',
+            actualTokens: actualMetrics.experienceTokens || 0
+        };
+        
+        // Update totals
+        this.totalMetrics.totalTokens += experienceMetrics.tokensUsed;
+        
+        console.log(`✅ Experience substep created - ${experienceMetrics.tokensUsed} tokens`);
+    }
+    
+    if (options.analyzeSitemap && actualMetrics.sitemapTokens > 0) {
+        const sitemapMetrics = this.initializeStep('apolloEnrichment_sitemap');
+        sitemapMetrics.apiTool = 'Manual Fetch + OpenAI';
+        sitemapMetrics.tokensUsed = actualMetrics.sitemapTokens || 0;
+        sitemapMetrics.creditsUsed = 0; // Sitemap analysis doesn't use credits (manual fetch)
+        sitemapMetrics.specificMetrics = {
+            isSubstep: true,
+            parentStep: 'apolloEnrichment',
+            substepType: 'sitemap',
+            description: 'Sitemaps Scraping',
+            actualTokens: actualMetrics.sitemapTokens || 0
+        };
+        
+        // Update totals
+        this.totalMetrics.totalTokens += sitemapMetrics.tokensUsed;
+        
+        console.log(`✅ Sitemap substep created - ${sitemapMetrics.tokensUsed} tokens`);
+    }
+    
+    // Update main Apollo step to reflect that substeps handle the heavy lifting
+    const apolloMetrics = this.stepMetrics['apolloEnrichment'];
+    if (apolloMetrics) {
+        // Apollo main step primarily does data fetching and caching
+        apolloMetrics.specificMetrics = {
+            isMainStep: true,
+            hasSubsteps: true,
+            substepCount: Object.keys(options).filter(opt => options[opt]).length,
+            description: 'Core Apollo Data Fetching',
+            note: 'Tokens/credits for analysis are tracked in substeps'
+        };
+    }
+    
+    this.saveMetrics();
+    console.log(`🎯 Apollo substeps created with ACTUAL metrics from independent processes`);
+}
 }
 
 // Create singleton instance

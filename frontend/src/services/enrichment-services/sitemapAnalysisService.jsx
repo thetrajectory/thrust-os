@@ -1,6 +1,7 @@
 // services/enrichment-services/sitemapAnalysisService.jsx
 import apiClient from '../../utils/apiClient';
 import customEngineFileStorageService from '../custom-engine/customEngineFileStorageService';
+import metricsStorageService from '../analytics/MetricsStorageService';
 
 /**
  * Sitemap Analysis Service
@@ -18,40 +19,47 @@ const sitemapAnalysisService = {
     async processData(rows, prompt, logCallback = () => { }, progressCallback = () => { }) {
         logCallback("Starting Sitemap Analysis...");
 
-        // Filter data to only process untagged rows
+        // DIRECT TRACKING: Initialize counters
+        let totalTokensUsed = 0;
+        let totalApiCalls = 0;
+        let totalErrors = 0;
+
         const untaggedData = rows.filter(row => !row.relevanceTag);
         logCallback(`Processing ${untaggedData.length} untagged rows out of ${rows.length} total rows.`);
 
         if (untaggedData.length === 0) {
             logCallback("No untagged rows to process for sitemap analysis.");
-            return rows;
+            return {
+                data: rows,
+                analytics: { tokensUsed: 0, apiCalls: 0, errors: 0 }
+            };
         }
 
         if (!prompt || !prompt.trim()) {
             logCallback("No custom prompt provided for sitemap analysis.");
-            return rows;
+            return {
+                data: rows,
+                analytics: { tokensUsed: 0, apiCalls: 0, errors: 0 }
+            };
         }
 
-        // Check for required placeholder
         if (!prompt.includes('<website_sitemaps>')) {
             logCallback("Warning: Prompt should contain <website_sitemaps> placeholder");
         }
 
         const model = import.meta.env.VITE_REACT_APP_TITLE_RELEVANCE_MODEL || 'gpt-4o-mini';
         const batchSize = parseInt(import.meta.env.VITE_REACT_APP_SITEMAP_ANALYSIS_BATCH_SIZE || "5");
-        const maxExecutionTime = 60; // seconds
+        const maxExecutionTime = 60;
         const maxSitemapUrls = 100;
-        const fetchTimeout = 5000; // milliseconds
+        const fetchTimeout = 5000;
         const maxCellChars = 49999;
 
-        // Use file storage for large datasets
         const useFileStorage = rows.length > 1000;
         if (useFileStorage) {
             logCallback('Large dataset detected - using file storage for sitemap analysis');
 
-            // Process using file storage service for large datasets
             const processFunction = async (chunk) => {
-                return await this.processChunk(
+                const result = await this.processChunk(
                     chunk,
                     prompt,
                     model,
@@ -61,6 +69,13 @@ const sitemapAnalysisService = {
                     fetchTimeout,
                     maxCellChars
                 );
+                
+                // DIRECT TRACKING: Accumulate usage
+                totalTokensUsed += result.tokensUsed || 0;
+                totalApiCalls += result.apiCalls || 0;
+                totalErrors += result.errors || 0;
+                
+                return result.data;
             };
 
             const progressFunction = (percent, message) => {
@@ -75,19 +90,27 @@ const sitemapAnalysisService = {
                     progressFunction
                 );
 
-                // Merge with original data
                 const finalData = this.mergeResults(rows, untaggedData, results);
 
                 logCallback(`Sitemap Analysis Complete (Large Dataset):`);
                 logCallback(`- Total processed: ${results.length}`);
+                logCallback(`- Total tokens used: ${totalTokensUsed}`);
+                logCallback(`- Total API calls: ${totalApiCalls}`);
 
-                return finalData;
+                return {
+                    data: finalData,
+                    analytics: {
+                        tokensUsed: totalTokensUsed,
+                        apiCalls: totalApiCalls,
+                        errors: totalErrors,
+                        processedCount: results.length
+                    }
+                };
             } catch (error) {
                 logCallback(`Error in large dataset processing: ${error.message}`);
                 throw error;
             }
         } else {
-            // Process in batches for smaller datasets
             return await this.processBatches(
                 rows,
                 untaggedData,
@@ -112,6 +135,8 @@ const sitemapAnalysisService = {
         const processedRows = [];
         let successCount = 0;
         let errorCount = 0;
+        let totalTokensUsed = 0;
+        let totalApiCalls = 0;
 
         for (let i = 0; i < untaggedData.length; i += batchSize) {
             const currentBatchSize = Math.min(batchSize, untaggedData.length - i);
@@ -136,8 +161,12 @@ const sitemapAnalysisService = {
                     .then(result => {
                         processedRows.push({
                             ...row,
-                            ...result
+                            ...result.data
                         });
+
+                        // DIRECT TRACKING: Count usage
+                        totalTokensUsed += result.tokensUsed || 0;
+                        totalApiCalls += result.apiCalls || 0;
 
                         successCount++;
                         const companyName = row['organization.name'] || row.company || 'unnamed company';
@@ -149,36 +178,45 @@ const sitemapAnalysisService = {
                         logCallback(`Error analyzing sitemap for ${companyName}: ${error.message}`);
                         errorCount++;
 
-                        processedRows.push({
-                            ...row,
-                            sitemap_analysis: 'Analysis failed',
-                            sitemap_analysis_error: error.message,
-                            sitemap_analysis_timestamp: new Date().toISOString()
-                        });
+                       processedRows.push({
+                           ...row,
+                           sitemap_analysis: 'Analysis failed',
+                           sitemap_analysis_error: error.message,
+                           sitemap_analysis_timestamp: new Date().toISOString()
+                       });
 
-                        progressCallback(((i + j + 1) / untaggedData.length) * 100);
-                    });
+                       progressCallback(((i + j + 1) / untaggedData.length) * 100);
+                   });
 
-                batchPromises.push(processPromise);
-            }
+               batchPromises.push(processPromise);
+           }
 
-            await Promise.all(batchPromises);
+           await Promise.all(batchPromises);
 
-            if (i + currentBatchSize < untaggedData.length) {
-                logCallback("Pausing briefly before next batch...");
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-        }
+           if (i + currentBatchSize < untaggedData.length) {
+               logCallback("Pausing briefly before next batch...");
+               await new Promise(resolve => setTimeout(resolve, 1000));
+           }
+       }
 
-        // Merge with original data
-        const finalData = this.mergeResults(rows, untaggedData, processedRows);
+       const finalData = this.mergeResults(rows, untaggedData, processedRows);
 
-        logCallback(`Sitemap Analysis Complete:`);
-        logCallback(`- Successfully analyzed: ${successCount}`);
-        logCallback(`- Errors: ${errorCount}`);
+       logCallback(`Sitemap Analysis Complete:`);
+       logCallback(`- Successfully analyzed: ${successCount}`);
+       logCallback(`- Total tokens used: ${totalTokensUsed}`);
+       logCallback(`- Total API calls: ${totalApiCalls}`);
+       logCallback(`- Errors: ${errorCount}`);
 
-        return finalData;
-    },
+       return {
+           data: finalData,
+           analytics: {
+               tokensUsed: totalTokensUsed,
+               apiCalls: totalApiCalls,
+               errors: errorCount,
+               processedCount: successCount
+           }
+       };
+   },
 
     /**
      * Process a chunk of data for file storage mechanism
@@ -187,15 +225,16 @@ const sitemapAnalysisService = {
         const results = [];
         let successCount = 0;
         let errorCount = 0;
-
+        let chunkTokensUsed = 0;
+        let chunkApiCalls = 0;
+ 
         for (const row of chunk) {
             try {
-                // Skip if already processed or tagged
                 if (row.relevanceTag) {
                     results.push({ ...row });
                     continue;
                 }
-
+ 
                 const result = await this.processSingleCompany(
                     row,
                     prompt,
@@ -206,12 +245,16 @@ const sitemapAnalysisService = {
                     fetchTimeout,
                     maxCellChars
                 );
-
+ 
                 results.push({
                     ...row,
-                    ...result
+                    ...result.data
                 });
-
+ 
+                // DIRECT TRACKING: Count usage
+                chunkTokensUsed += result.tokensUsed || 0;
+                chunkApiCalls += result.apiCalls || 0;
+ 
                 successCount++;
             } catch (error) {
                 errorCount++;
@@ -224,9 +267,14 @@ const sitemapAnalysisService = {
                 });
             }
         }
-
-        logCallback(`Chunk processed: ${successCount} success, ${errorCount} errors`);
-        return results;
+ 
+        logCallback(`Chunk processed: ${successCount} success, ${errorCount} errors, ${chunkTokensUsed} tokens used`);
+        return {
+            data: results,
+            tokensUsed: chunkTokensUsed,
+            apiCalls: chunkApiCalls,
+            errors: errorCount
+        };
     },
 
     /**
@@ -236,17 +284,20 @@ const sitemapAnalysisService = {
         try {
             const companyName = row['organization.name'] || row.company || 'Unknown company';
             const websiteUrl = row['organization.website_url'] || row['organization.primary_domain'] || '';
-
+    
             if (!websiteUrl) {
                 logCallback(`No website URL found for ${companyName}`);
                 return {
-                    sitemap_analysis: 'No website URL available',
-                    website_sitemap: '',
-                    sitemap_analysis_timestamp: new Date().toISOString()
+                    data: {
+                        sitemap_analysis: 'No website URL available',
+                        website_sitemap: '',
+                        sitemap_analysis_timestamp: new Date().toISOString()
+                    },
+                    tokensUsed: 0,
+                    apiCalls: 0
                 };
             }
-
-            // Extract sitemaps from website
+    
             logCallback(`Extracting sitemaps for ${companyName} (${websiteUrl})`);
             const startTime = new Date().getTime();
             const sitemaps = await this.extractSitemaps(
@@ -256,24 +307,30 @@ const sitemapAnalysisService = {
                 fetchTimeout,
                 logCallback
             );
-
+    
             if (!sitemaps || sitemaps.length === 0) {
                 logCallback(`No sitemaps found for ${companyName}`);
                 return {
-                    sitemap_analysis: 'No sitemaps found',
-                    website_sitemap: '',
-                    sitemap_analysis_timestamp: new Date().toISOString()
+                    data: {
+                        sitemap_analysis: 'No sitemaps found',
+                        website_sitemap: '',
+                        sitemap_analysis_timestamp: new Date().toISOString()
+                    },
+                    tokensUsed: 0,
+                    apiCalls: 0
                 };
             }
-
-            // Create a string representation of sitemaps for storage and analysis
+    
             const sitemapString = this.truncateUrlList(sitemaps, ", ", maxCellChars);
             logCallback(`Found ${sitemaps.length} sitemap URLs for ${companyName}`);
-
-            // Analyze sitemaps using AI
+    
             const processedPrompt = prompt.replace('<website_sitemaps>', sitemapString);
-
+    
             logCallback(`Analyzing sitemap data for ${companyName}`);
+            
+            // DIRECT TRACKING: Count API call for sitemap analysis
+            metricsStorageService.addApiCall('apolloEnrichment_sitemap');
+            
             const response = await apiClient.openai.chatCompletion({
                 model: model,
                 messages: [
@@ -289,25 +346,39 @@ const sitemapAnalysisService = {
                 max_tokens: 300,
                 temperature: 0.3
             });
-
+    
             let analysis = '';
+            let tokensUsed = 0;
+            
             if (response && response.choices && response.choices[0] && response.choices[0].message) {
                 analysis = response.choices[0].message.content?.trim();
             }
-
+    
+            if (response?.usage?.total_tokens) {
+                tokensUsed = response.usage.total_tokens;
+                // DIRECT TRACKING: Add tokens to substep
+                metricsStorageService.addTokens('apolloEnrichment_sitemap', tokensUsed);
+            }
+    
             if (!analysis) {
                 throw new Error("AI analysis returned empty content");
             }
-
+    
             const processingTime = (new Date().getTime() - startTime) / 1000;
             logCallback(`Completed sitemap analysis for ${companyName} in ${processingTime.toFixed(2)} seconds`);
-
+    
             return {
-                sitemap_analysis: analysis,
-                website_sitemap: sitemapString,
-                sitemap_analysis_timestamp: new Date().toISOString()
+                data: {
+                    sitemap_analysis: analysis,
+                    website_sitemap: sitemapString,
+                    sitemap_analysis_timestamp: new Date().toISOString()
+                },
+                tokensUsed: tokensUsed,
+                apiCalls: 1
             };
         } catch (error) {
+            // DIRECT TRACKING: Count error
+            metricsStorageService.addError('apolloEnrichment_sitemap');
             throw new Error(`Failed to analyze sitemap: ${error.message}`);
         }
     },
