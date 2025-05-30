@@ -322,7 +322,6 @@ const CustomEngineResultsPage = ({ onBack }) => {
                 'Processed Rows': outputCount,
                 'Tokens Used': tokensUsed, // Now shows actual tracked tokens from logs
                 'Credits Used': creditsUsed, // Now shows actual tracked credits from logs
-                'API Calls': apiCalls,
                 'Time to Run (seconds)': processingTime > 0 ? (processingTime / 1000).toFixed(2) : '0',
                 'Average Token/Row': inputCount > 0 && tokensUsed > 0 ? (tokensUsed / inputCount).toFixed(2) : '0',
                 'Average Time/Row (seconds)': inputCount > 0 && processingTime > 0 ? ((processingTime / 1000) / inputCount).toFixed(4) : '0',
@@ -359,7 +358,6 @@ const CustomEngineResultsPage = ({ onBack }) => {
             'Processed Rows': processingStats.finalCount || 0,
             'Tokens Used': totalTokens,
             'Credits Used': totalCredits,
-            'API Calls': totalApiCalls,
             'Time to Run (seconds)': totalTime > 0 ? (totalTime / 1000).toFixed(2) : '0',
             'Average Token/Row': totalRows > 0 && totalTokens > 0 ? (totalTokens / totalRows).toFixed(2) : '0',
             'Average Time/Row (seconds)': totalRows > 0 && totalTime > 0 ? ((totalTime / 1000) / totalRows).toFixed(4) : '0',

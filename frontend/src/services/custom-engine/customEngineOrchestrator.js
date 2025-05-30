@@ -120,23 +120,63 @@ class CustomEngineOrchestrator {
             this.callbacks.logCallback(logEntry);
         }
         
-        // ENHANCED: Extract metrics from log message with better Apollo substep detection
+        // ENHANCED: Real-time tracking of actual metrics from logs
         const currentStepId = this.pipeline[this.currentStepIndex];
-        if (currentStepId && message) {
+        if (currentStepId && message && typeof message === 'string') {
+            
+            // Track main step metrics
             metricsStorageService.extractMetricsFromLog(currentStepId, message);
             
-            // Special handling for Apollo substep activities
+            // ENHANCED: Track Apollo substeps based on actual log content
             if (currentStepId === 'apolloEnrichment') {
-                if (/website.*?analysis|analyzing.*?website|scraping.*?website|website.*?content/i.test(message)) {
+                
+                // Website Analysis - track when actually happening
+                if (/website.*?analysis|analyzing.*?website|scraping.*?website|website.*?content|serper.*?website/i.test(message)) {
                     metricsStorageService.extractMetricsFromLog('apolloEnrichment_website', message);
+                    
+                    // Initialize substep if not exists
+                    if (!metricsStorageService.stepMetrics['apolloEnrichment_website']) {
+                        const websiteMetrics = metricsStorageService.initializeStep('apolloEnrichment_website');
+                        websiteMetrics.apiTool = 'Serper + OpenAI';
+                        websiteMetrics.specificMetrics = {
+                            isSubstep: true,
+                            parentStep: 'apolloEnrichment',
+                            substepType: 'website',
+                            description: 'Website Analysis'
+                        };
+                    }
                 }
                 
-                if (/experience.*?analysis|employment.*?history|linkedin.*?experience|analyzing.*?experience/i.test(message)) {
+                // Employee History Analysis - track when actually happening
+                if (/experience.*?analysis|employment.*?history|linkedin.*?experience|analyzing.*?experience|employment.*?analysis/i.test(message)) {
                     metricsStorageService.extractMetricsFromLog('apolloEnrichment_experience', message);
+                    
+                    if (!metricsStorageService.stepMetrics['apolloEnrichment_experience']) {
+                        const experienceMetrics = metricsStorageService.initializeStep('apolloEnrichment_experience');
+                        experienceMetrics.apiTool = 'OpenAI GPT';
+                        experienceMetrics.specificMetrics = {
+                            isSubstep: true,
+                            parentStep: 'apolloEnrichment',
+                            substepType: 'experience',
+                            description: 'Employee History Analysis'
+                        };
+                    }
                 }
                 
+                // Sitemap Analysis - track when actually happening
                 if (/sitemap.*?analysis|analyzing.*?sitemap|extracting.*?sitemap|sitemap.*?scraping/i.test(message)) {
                     metricsStorageService.extractMetricsFromLog('apolloEnrichment_sitemap', message);
+                    
+                    if (!metricsStorageService.stepMetrics['apolloEnrichment_sitemap']) {
+                        const sitemapMetrics = metricsStorageService.initializeStep('apolloEnrichment_sitemap');
+                        sitemapMetrics.apiTool = 'Manual Fetch + OpenAI';
+                        sitemapMetrics.specificMetrics = {
+                            isSubstep: true,
+                            parentStep: 'apolloEnrichment',
+                            substepType: 'sitemap',
+                            description: 'Sitemaps Scraping'
+                        };
+                    }
                 }
             }
         }

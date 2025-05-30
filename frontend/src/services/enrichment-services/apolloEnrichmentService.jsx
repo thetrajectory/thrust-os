@@ -659,47 +659,88 @@ const apolloEnrichmentService = {
         if (!config.options) {
             return rows;
         }
-
+    
         const { analyzeWebsite, analyzeExperience, analyzeSitemap } = config.options;
         const prompts = config.prompts || {};
         let result = rows;
-
+    
         if (analyzeWebsite && prompts.websitePrompt) {
-            logCallback('Starting website content analysis...');
-
+            logCallback('🌐 Starting Website Analysis substep...');
+    
             // Step 1: Scrape websites first
             result = await websiteScrapingService.scrapeWebsites(
                 result,
-                logCallback,
+                (message) => {
+                    logCallback(`🌐 Website Analysis: ${message}`);
+                    // Log actual Serper credits when used
+                    if (message.includes('scraping')) {
+                        logCallback('🌐 Website Analysis: 1 credit used for Serper website scraping');
+                    }
+                },
                 (progress) => {
                     if (progressCallback) {
-                        progressCallback(50 + (progress * 0.2)); // 20% for scraping (starting at 50%)
+                        progressCallback(50 + (progress * 0.2));
                     }
                 }
             );
-
+    
             // Step 2: Analyze website content
             result = await websiteAnalysisService.analyzeWebsites(
                 result,
                 prompts.websitePrompt,
-                logCallback,
+                (message) => {
+                    logCallback(`🌐 Website Analysis: ${message}`);
+                    // Track actual OpenAI token usage
+                    if (message.includes('tokens')) {
+                        logCallback(`🌐 Website Analysis: ${message}`);
+                    }
+                },
                 (progress) => {
                     if (progressCallback) {
-                        progressCallback(70 + (progress * 0.2)); // 20% for analysis (starting at 70%)
+                        progressCallback(70 + (progress * 0.2));
                     }
                 }
             );
+            
+            logCallback('✅ Website Analysis substep completed');
         }
-
+    
         if (analyzeExperience && prompts.experiencePrompt) {
-            result = await linkedinExperienceAnalysisService.processData(result, prompts.experiencePrompt, logCallback);
-
+            logCallback('👔 Starting Employee History Analysis substep...');
+            
+            result = await linkedinExperienceAnalysisService.processData(
+                result, 
+                prompts.experiencePrompt, 
+                (message) => {
+                    logCallback(`👔 Employee History Analysis: ${message}`);
+                    // Track actual token usage for experience analysis
+                    if (message.includes('tokens')) {
+                        logCallback(`👔 Employee History Analysis: ${message}`);
+                    }
+                }
+            );
+            
+            logCallback('✅ Employee History Analysis substep completed');
         }
-
+    
         if (analyzeSitemap && prompts.sitemapPrompt) {
-            result = await sitemapAnalysisService.processData(rows, prompts.sitemapPrompt, logCallback);
+            logCallback('🗺️ Starting Sitemaps Scraping substep...');
+            
+            result = await sitemapAnalysisService.processData(
+                rows, 
+                prompts.sitemapPrompt, 
+                (message) => {
+                    logCallback(`🗺️ Sitemaps Scraping: ${message}`);
+                    // Track actual token usage (no credits - manual fetch)
+                    if (message.includes('tokens')) {
+                        logCallback(`🗺️ Sitemaps Scraping: ${message}`);
+                    }
+                }
+            );
+            
+            logCallback('✅ Sitemaps Scraping substep completed');
         }
-
+    
         return result;
     },
 

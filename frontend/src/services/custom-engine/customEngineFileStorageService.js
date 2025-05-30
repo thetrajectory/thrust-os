@@ -331,10 +331,10 @@ generateProcessingReport(data, analytics) {
                   'Metric': `${displayName} - Credits Used`,
                   'Value': creditsUsed
               });
-              reportData.push({
-                  'Metric': `${displayName} - API Calls`,
-                  'Value': metric.apiCalls || 0
-              });
+              // reportData.push({
+              //     'Metric': `${displayName} - API Calls`,
+              //     'Value': metric.apiCalls || 0
+              // });
               reportData.push({
                   'Metric': `${displayName} - Supabase Hits`,
                   'Value': supabaseHits
