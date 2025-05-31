@@ -120,22 +120,20 @@ const apolloEnrichmentService = {
                             logCallback
                         );
 
-                        // DIRECT TRACKING: Count actual usage
                         if (result.source === 'supabase') {
                             supabaseHits++;
-                            totalSupabaseHits++;
-                            metricsStorageService.addSupabaseHit('apolloEnrichment');
                         } else if (result.source === 'apollo') {
                             apolloFetches++;
-                            totalApiCalls++;
-                            metricsStorageService.addApiCall('apolloEnrichment');
+                            // Track credits used for Apollo fetches
+                            const creditsForThisFetch = result.creditsUsed || 1;
+                            totalCreditsUsed += creditsForThisFetch;
+                            logCallback(`Apollo credit consumed: ${creditsForThisFetch} credit used for API call`);
                         }
 
                         results.push(result.data);
 
                     } catch (error) {
                         errorCount++;
-                        metricsStorageService.addError('apolloEnrichment');
                         logCallback(`Error processing lead: ${error.message}`);
                         results.push({
                             ...row,
@@ -144,6 +142,7 @@ const apolloEnrichmentService = {
                         });
                     }
                 }
+
 
                 const progress = Math.floor(((i + batch.length) / untaggedData.length) * 50);
                 progressCallback(progress);
@@ -201,18 +200,19 @@ const apolloEnrichmentService = {
             logCallback(`Apollo Enrichment Complete:`);
             logCallback(`- Retrieved from Supabase: ${supabaseHits}`);
             logCallback(`- Fetched from Apollo API: ${apolloFetches}`);
-            logCallback(`- Total Tokens Used: ${totalTokensUsed}`);
-            logCallback(`- Total Credits Used: ${totalCreditsUsed}`);
+            logCallback(`- Apollo Credits Used: ${totalCreditsUsed}`); // New log for credits
             logCallback(`- Errors: ${errorCount}`);
 
             return {
                 data: mergedResults,
                 analytics: {
+                    apolloFetches,
                     tokensUsed: totalTokensUsed,
                     creditsUsed: totalCreditsUsed,
                     supabaseHits: totalSupabaseHits,
-                    apiCalls: totalApiCalls,
+                    apiCalls: apolloFetches,
                     processedCount: results.length,
+                    errorCount,
                     processingTime: Date.now() - startTimestamp
                 }
             };
@@ -254,6 +254,7 @@ const apolloEnrichmentService = {
                 if (cachedResult) {
                     return {
                         source: 'supabase',
+                        creditsUsed: 0, // No credits used for cached data
                         data: {
                             ...row,
                             ...cachedResult
@@ -266,6 +267,10 @@ const apolloEnrichmentService = {
             logCallback(`Fetching from Apollo API for ${linkedinUrl}`);
             const apolloResult = await apolloEnrichmentService.fetchFromApollo(linkedinUrl, apiKey);
 
+            // Log credits used for this Apollo fetch
+            const creditsUsed = apolloResult.creditsUsed || 1;
+            logCallback(`Apollo API fetch completed - 1 credit used for ${linkedinUrl}`);
+
             // Step 3: Save to Supabase for future use
             if (supabaseAvailable && apolloResult.person?.id) {
                 await apolloEnrichmentService.saveToSupabase(linkedinUrl, apolloResult, row);
@@ -273,6 +278,7 @@ const apolloEnrichmentService = {
 
             return {
                 source: 'apollo',
+                creditsUsed: creditsUsed,
                 data: {
                     ...row,
                     apolloLeadSource: 'apollo',
@@ -285,6 +291,7 @@ const apolloEnrichmentService = {
             logCallback(`Error processing ${linkedinUrl}: ${error.message}`);
             return {
                 source: 'error',
+                creditsUsed: 0, // No credits used on error
                 data: {
                     ...row,
                     apolloLeadSource: 'error',
@@ -350,9 +357,11 @@ const apolloEnrichmentService = {
     async fetchFromApollo(linkedinUrl, apiKey) {
         const maxRetries = 3;
         let retryCount = 0;
+        let creditsUsed = 0; // Track credits used for this fetch
 
         while (retryCount <= maxRetries) {
             try {
+                // Prepare the request data - this is the key fix!
                 const requestData = {
                     api_key: apiKey,
                     linkedin_url: linkedinUrl,
@@ -362,17 +371,23 @@ const apolloEnrichmentService = {
 
                 console.log('Apollo API request data:', requestData);
 
+                // Use the existing apiClient.apollo.matchPerson method
                 const response = await apiClient.apollo.matchPerson(requestData);
 
                 console.log('Apollo API response received:', response);
+
+                // IMPORTANT: Apollo API typically charges 1 credit per successful person match
+                creditsUsed = 1; // Standard credit cost for people match API
 
                 if (!response || !response.person) {
                     throw new Error('No person data in Apollo response');
                 }
 
+                // Return the expected format with credits tracking
                 return {
                     person: response.person,
-                    organization: response.person.organization
+                    organization: response.person.organization,
+                    creditsUsed: creditsUsed // Include credits used in the response
                 };
 
             } catch (apiError) {
@@ -380,10 +395,11 @@ const apolloEnrichmentService = {
                 console.error(`Apollo API attempt ${retryCount} failed:`, apiError.message);
 
                 if (retryCount <= maxRetries) {
-                    const delay = retryCount * 3000;
+                    const delay = retryCount * 3000; // 3s, 6s, 9s
                     console.log(`Retrying in ${delay}ms...`);
                     await new Promise(resolve => setTimeout(resolve, delay));
                 } else {
+                    // Log the final error details
                     console.error('Final Apollo API error:', {
                         message: apiError.message,
                         linkedinUrl: linkedinUrl,
