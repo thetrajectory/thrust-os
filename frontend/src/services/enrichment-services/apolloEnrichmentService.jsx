@@ -122,18 +122,26 @@ const apolloEnrichmentService = {
 
                         if (result.source === 'supabase') {
                             supabaseHits++;
+                            totalSupabaseHits++;
+
+                            metricsStorageService.addSupabaseHit('apolloEnrichment');
                         } else if (result.source === 'apollo') {
                             apolloFetches++;
+                            totalApiCalls++;
                             // Track credits used for Apollo fetches
                             const creditsForThisFetch = result.creditsUsed || 1;
                             totalCreditsUsed += creditsForThisFetch;
                             logCallback(`Apollo credit consumed: ${creditsForThisFetch} credit used for API call`);
+
+                            metricsStorageService.addCredits('apolloEnrichment', creditsForThisFetch);
+                            metricsStorageService.addApiCall('apolloEnrichment');
                         }
 
                         results.push(result.data);
 
                     } catch (error) {
                         errorCount++;
+                        metricsStorageService.addError('apolloEnrichment');
                         logCallback(`Error processing lead: ${error.message}`);
                         results.push({
                             ...row,
@@ -209,7 +217,7 @@ const apolloEnrichmentService = {
                     apolloFetches,
                     tokensUsed: totalTokensUsed,
                     creditsUsed: totalCreditsUsed,
-                    supabaseHits: totalSupabaseHits,
+                    supabaseHits: totalSupabaseHits, 
                     apiCalls: apolloFetches,
                     processedCount: results.length,
                     errorCount,
