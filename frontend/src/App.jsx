@@ -161,10 +161,10 @@ const App = () => {
   const handleFileUpload = (file, data) => {
     setCsvFile(file);
 
-    // Add advisor info to the data
+    // Add advisor info to the data with correct field name
     const enrichedData = data.map(row => ({
       ...row,
-      advisorName: selectedAdvisor || 'Unknown',
+      connected_to: selectedAdvisor || 'Unknown Advisor', // ✅ Use correct field name
       connected_on: row.connected_on || new Date().toISOString(),
       relevanceTag: ''
     }));

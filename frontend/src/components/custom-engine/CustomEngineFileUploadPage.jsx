@@ -65,6 +65,9 @@ const CustomEngineFileUploadPage = ({ onFileUpload, onBack }) => {
   };
 
   const normalizeFieldNames = (data) => {
+    // Get the selected advisor from storage
+    const selectedAdvisor = storageUtils.loadFromStorage(storageUtils.STORAGE_KEYS.ADVISOR);
+    
     return data.map(row => {
       const normalizedRow = { ...row };
       
@@ -87,6 +90,11 @@ const CustomEngineFileUploadPage = ({ onFileUpload, onBack }) => {
       
       if (!normalizedRow.position && normalizedRow.title) {
         normalizedRow.position = normalizedRow.title;
+      }
+      
+      // ✅ Add advisor information
+      if (!normalizedRow.connected_to) {
+        normalizedRow.connected_to = selectedAdvisor || 'Unknown Advisor';
       }
       
       // Initialize relevanceTag field

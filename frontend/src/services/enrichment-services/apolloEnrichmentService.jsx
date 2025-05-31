@@ -406,10 +406,13 @@ const apolloEnrichmentService = {
             const companyName = apolloData.organization?.name || originalRow.company || '';
             const position = apolloData.person?.title || originalRow.position || '';
             const connectedOn = originalRow.connected_on || now.split('T')[0];
+            const connectedTo = originalRow.connected_to || 'Unknown Advisor'; // ✅ Add this line
 
             let isoConnectedOn = connectedOn;
             if (connectedOn && typeof connectedOn === 'string') {
+                // Try to parse the date and convert to ISO format
                 try {
+                    // Handle format like "27-04-2025"
                     const match = connectedOn.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
                     if (match) {
                         const day = match[1].padStart(2, '0');
@@ -417,6 +420,7 @@ const apolloEnrichmentService = {
                         const year = match[3];
                         isoConnectedOn = `${year}-${month}-${day}`;
                     } else if (!connectedOn.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                        // If not already in ISO format, use current date as fallback
                         isoConnectedOn = new Date().toISOString().split('T')[0];
                     }
                 } catch (e) {
@@ -425,6 +429,7 @@ const apolloEnrichmentService = {
                 }
             }
 
+            // Check if record exists
             const { data: existingRecord, error: fetchError } = await supabase
                 .from('leads_db')
                 .select('apollo_person_id')
@@ -436,18 +441,21 @@ const apolloEnrichmentService = {
             }
 
             if (existingRecord) {
+                // Update existing record
                 const { error: updateError } = await supabase
                     .from('leads_db')
                     .update({
                         apollo_person_id: apolloData.person?.id,
                         apollo_json: apolloJsonString,
                         connected_on: isoConnectedOn,
+                        connected_to: connectedTo, // ✅ Add this line
                         updated_at: now
                     })
                     .eq('apollo_person_id', existingRecord.id);
 
                 if (updateError) throw new Error(`Supabase update error: ${updateError.message}`);
             } else {
+                // Insert new record
                 const { error: insertError } = await supabase
                     .from('leads_db')
                     .insert({
@@ -458,6 +466,7 @@ const apolloEnrichmentService = {
                         apollo_person_id: apolloData.person?.id,
                         apollo_json: apolloJsonString,
                         connected_on: isoConnectedOn,
+                        connected_to: connectedTo, // ✅ Add this line
                         created_at: now
                     });
 
@@ -465,6 +474,7 @@ const apolloEnrichmentService = {
             }
 
         } catch (error) {
+            // Don't throw, just log the error
             console.error(`Failed to save to Supabase: ${error.message}`);
         }
     },
